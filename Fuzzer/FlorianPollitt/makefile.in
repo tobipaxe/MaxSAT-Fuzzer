@@ -1,0 +1,8 @@
+CXX=@CXX@
+CXXFLAGS=@CXXFLAGS@
+all: wmaxdd
+wmaxdd: wmaxdd.cpp makefile
+	$(CXX) $(CXXFLAGS) -o $@ $<
+clean:
+	rm -f wmaxdd makefile
+.PHONY: all clean

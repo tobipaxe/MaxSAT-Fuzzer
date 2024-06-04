@@ -1,0 +1,60 @@
+#!/bin/sh
+usage () {
+echo "usage: configure [-h|--help|-d|--debug]"
+echo "usage: configure [-h|--help|-d|--debug]"
+cat <<EOF
+usage: configure [ <option> ... ]
+
+where '<option>' is one of the following:
+
+-c | --check         include assertion checking (default for '--debug')
+-d | --debug | -g    enable debugging (implies '-d', '-l', and '-s')
+-h | --help          print this command line option summary
+-l | --logging       include logging code (default for '--debug')
+-s | --symbols       include symbol table (default for '--debug')
+     --sanitize      use '-fsanitize=address,undefined' sanitizers
+EOF
+exit 1
+}
+die () {
+  echo "configure: error: $*" 1>&2
+  exit 1
+}
+check=no
+debug=no
+logging=no
+symbols=no
+sanitize=no
+while [ $# -gt 0 ]
+do
+  case $1 in
+    -c|--check) debug=yes;;
+    -g | -d|--debug) debug=yes;;
+    -h|--help) usage;;
+    -l|--logging) logging=yes;;
+    -s|--symbols) symbols=yes;;
+    --sanitize) sanitize=yes;;
+    *) die "invalid option '$1' (try '-h')";;
+  esac
+  shift
+done
+
+[ "$CXX" = "" ] && CXX=g++
+
+case "$CXX" in
+  g++*|clang*) CXXFLAGS="-Wall";;
+  *) CXXFLAGS="-W";;
+esac
+
+[ $debug = yes ] && check=yes
+[ $debug = yes ] && logging=yes
+[ $debug = yes ] && symbols=yes
+
+[ $symbols = yes ] && CXXFLAGS="$CXXFLAGS -g"
+[ $debug = no ] && CXXFLAGS="$CXXFLAGS -O3"
+[ $sanitize = yes ] && CXXFLAGS="$CXXFLAGS -fsanitize=address,undefined"
+[ $logging = yes ] && CXXFLAGS="$CXXFLAGS -DLOGGING"
+[ $check = no ] && CXXFLAGS="$CXXFLAGS -DNDEBUG"
+
+echo "configure: using '$CXX $CXXFLAGS'"
+sed -e "s#@CXX@#$CXX#;s#@CXXFLAGS@#$CXXFLAGS#" makefile.in > makefile
