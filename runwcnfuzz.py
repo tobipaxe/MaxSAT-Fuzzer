@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import threading
 import random
@@ -16,66 +16,8 @@ import csv
 import statistics
 import typing
 import psutil
+from config import fuzzers, wcnf_compare_script, delta_debugger_compare_script, delta_debugger
 
-# dictionary with the following entries
-#   name of fuzzer      this contains an additional dictionary with the following entries
-#       command         how to start the fuzzer in the command line
-#       upper-bound     upper-bound argument if possible, then the upper bound will be added after this argument
-#       compare_extra   this argument will be added only for this fuzzer to the compare script
-#                       for example it has been shown that in very rare cases the manthey fuzzer produces
-#                       some strange numbers higher than top. Therefore it is good to rewrite that instance
-#                       again. (arg=="compare_extra": " --reWriteAllWCNFs")
-#       seed            if necessary -- after this argument the 20 digit seed follows. If not given the seed
-#                       is added after an empty space.
-#       max_seed         upper bound for a seed of this fuzzer
-fuzzers = {
-    # "Paxian": {"command": "Fuzzer/wcnfuzz/wcnfuzz --wcnf", "upper_bound": "-u"},
-    # "PaxianPy": {
-    #     "command": "Fuzzer/wcnfuzz.py",
-    #     "upper_bound": "--upperBound",
-    #     "seed": "--seed",
-    # },
-    # "PaxianPySmall": {
-    #     "command": "Fuzzer/wcnfuzz.py --small",
-    #     "upper_bound": "--upperBound",
-    #     "seed": "--seed",
-    # },
-    "PaxianPyTiny": {
-        "command": "Fuzzer/wcnfuzz.py --tiny",
-        "upper_bound": "--upperBound",
-        "seed": "--seed",
-    },
-    # "PaxianPyGBMO": {
-    #     "command": "Fuzzer/wcnfuzz.py --gbmo",
-    #     "upper_bound": "--upperBound",
-    #     "seed": "--seed",
-    # },
-    # "PaxianPySmallGBMO": {
-    #     "command": "Fuzzer/wcnfuzz.py --small --gbmo",
-    #     "upper_bound": "--upperBound",
-    #     "seed": "--seed",
-    # },
-    "PaxianPyTinyGBMO": {
-        "command": "Fuzzer/wcnfuzz.py --tiny --gbmo",
-        "upper_bound": "--upperBound",
-        "seed": "--seed",
-    },
-    # "Pollitt": {
-    #     "command": "Fuzzer/generateFlorianPollitWCNF.sh",
-    #     "max_seed": 10**20,
-    #     "min_seed": 10**19,
-    # },
-    ### The following two fuzzers have to be downloaded and are not part of the project! But I've included the necessary scripts to reproduce the results anyhow!
-    # "Manthey": {
-    #     "command": "Fuzzer/generateNorbertMantheyWCNF.sh",
-    #     "compare_extra": "--reWriteAllWCNFs",
-    # },
-    # "Soos": {"command": "Fuzzer/generateMateSoosWCNF.sh"},
-}
-
-wcnf_compare_script = "./compare.py --logging --saveWCNF"
-delta_debugger_compare_script = "./compare.py_--saveWCNF"
-delta_debugger = "DeltaDebugger/wcnfddmin/wcnfddmin "
 minimize = 0
 min_free_disk_space = 2  # GB
 free_first_time = 0
@@ -321,7 +263,9 @@ def cleanup():
 
     # Print the descriptions and paths only if they exist
     for description, path in paths_and_descriptions:
-        print_if_exists(description, path, "\033[1;37m")
+        print_if_exists(description, path, "\033[1;30;42m")
+    #"\033[1;37m" <- bold white didn't work properly
+    print()
 
     exit(0)
 
@@ -1370,8 +1314,9 @@ def print_status():
             # else
             #     non_zero_percent = 0
 
+            compare_exit_codes = files_processed - files_error_free
             exit_codes_solvers = (
-                str(overall_non_zero_codes) + "/" + str(error_tracker.error_counter)
+                str(overall_non_zero_codes + compare_exit_codes) + "/" + str(error_tracker.error_counter)
             )
             print(
                 # f"{RED}Non-zero Exit Codes        : {overall_non_zero_codes:>14}{RESET}"
