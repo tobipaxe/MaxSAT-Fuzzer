@@ -427,7 +427,7 @@ if len(solvers) < 2:
         + " solvers remain. These are too few solvers to compare.",
         file=sys.stderr,
     )
-    exit(0)
+    exit(1)
 
 minVerifiedOValue = 2**64
 # minValueHitBySolver = []
