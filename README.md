@@ -1,4 +1,7 @@
 # MaxSAT Fuzzer
+The MaxSAT Fuzzer is a powerful tool designed for uncovering and classifying bugs in MaxSAT solvers through fuzzing and delta debugging. This fuzzer was created by Tobias Paxian, with an accompanying POS paper published in 2023, and a journal article planned. For more information, please cite:
+
+Paxian, T., & Biere, A. (2023). Uncovering and Classifying Bugs in MaxSAT Solvers through Fuzzing and Delta Debugging. In Proceedings of the Pragmatics of SAT (POS) 2023.
 
 ## Installation
 
