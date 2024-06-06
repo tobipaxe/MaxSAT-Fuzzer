@@ -17,8 +17,7 @@ mempeakFactor = 50
 # YOURSOLVERNAME should be shorter than 22 symbols and only contains - letters, numbers and -;
 # DONT USE THE UNDERSCORE SYMBOL _
 # solver["YOURSOLVERNAME"] = {
-#     "solver_call" : "SOLVERCALL . is the binary of the current script in relation to this script
-#                                   or the whole path toghether with arguments",
+#     "solver_call" : "SOLVERCALL is the binary of the current script with the whole path toghether with arguments",
 #     "input_format": "wcnf" | "oldwcnf" | "mps"
 #     "type": "complete" | "anytime" | "certified"
 #     "short": "up to 6 characters to identify the solver. Has to be unique and without underscore!"
@@ -41,7 +40,7 @@ solvers = {
     },
 
     # "sat4j": {
-    #     "solver_call": "./Others/sat4j.sh",
+    #     "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/Others/sat4j.sh",
     #     "input_format": "oldwcnf",
     #     "type": "complete",
     #     "short": "S4J",
@@ -49,7 +48,7 @@ solvers = {
 
     # MIP Solver
     # "SCIP": {
-    #     "solver_call": "./MIPSolver/SCIP.sh",
+    #     "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MIPSolver/SCIP.sh",
     #     "input_format": "mps",
     #     "upper_bound": 1000000,
     #     "type": "complete"
@@ -57,7 +56,7 @@ solvers = {
 
     # MSE 23 Anytime Solver
     # "NuWLS-c-static": {
-    #     "solver_call": "./MSE23/anytime/NuWLS-c-2023/bin/NuWLS-c_static",
+    #     "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MSE23/anytime/NuWLS-c-2023/bin/NuWLS-c_static",
     #     "input_format": "wcnf",
     #     "type": "anytime",
     #     "short": "NuWcs",
@@ -65,7 +64,7 @@ solvers = {
 
     # MSE 23 Complete Solver
     # "EvalMaxSAT-SCIP": {
-    #     "solver_call": "./MSE23/exact/EvalMaxSAT/bin/EvalMaxSAT --timeUB 0 --minRefTime 5",
+    #     "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MSE23/exact/EvalMaxSAT/bin/EvalMaxSAT --timeUB 0 --minRefTime 5",
     #     "input_format": "wcnf",
     #     "type": "complete",
     #     "short": "EMSSC",
