@@ -23,7 +23,7 @@ cd kissat
 
 ### Configure `config.py` File with Your Solvers / Fuzzers
 In `config.py`, configure your solvers and fuzzers:
-- **Solvers**: Add at least two solvers to the `solvers` dictionary for comparison. Until now we found two solvers without any bugs for all sum of weights up to 2^64-1 EvalMaxSAT from the MSE22 (23 had bugs) and sat4j.
+- **Solvers**: Add at least one solvers to the `solvers` dictionary, but better two or more for being able to compare the best found objection value. Until now we found two solvers without any bugs for all sum of weights up to 2^64-1 EvalMaxSAT from the MSE22 (23 had bugs) and sat4j.
 - **Fuzzers**: Add at least one fuzzer to the `fuzzers` dictionary. Two versions with tiny instances are already included and activated. Tiny instances give you the advantage of producing faster results, but they cannot provide as high variations as big instances. Some bugs may be missed due to that.
 
 ### Build Delta Debugger
@@ -84,3 +84,4 @@ The delta debugger wcnfddmin reduces instance size when a bug is found. It can b
 
 ## Log Files
 All log files are saved in `Logs/date-secondsOfTheDay-runwcnfuzz/xxx`. The program will indicate the log file location at the end of usage. In this folder you'll find the log file from the fuzzer `FaultOverview.log`, delta debugger logs, a fault overview for all solver bug combinations together with the solver output, minimized and unreduced wcnf instances.
+

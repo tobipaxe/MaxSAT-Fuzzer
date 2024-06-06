@@ -78,7 +78,7 @@ invalid_description = {
     -103: "ddmin no error after reduction",
     -102: "ddmin non-deterministic error",
     -101: "ddmin parse error",
-    -6: "compare rv != 0, but no fault found",
+    -6: "invalid compare.py return value",
     -5: "upper bound violation",
     -4: "fuzzer return code invalid",
     -3: "fuzzer invalid line",

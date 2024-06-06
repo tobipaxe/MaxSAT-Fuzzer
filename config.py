@@ -5,7 +5,9 @@ mempeakFactor = 50
 
 # SOLVER CONFIGURATION
 # PLEASE ADD OWN SOLVERS TO THE DICTIONARY IN THE FOLLOWING WAY
-# you should add at least two solvers for being able to compare the results of these solvers.
+# It is possible to run the script with only one solver, but for being able to compare results of solvers
+# you should add at least two solvers. Best if these solvers are not only variations of one solver, but
+# completely differnt. You can add as many solvers as you want, but then the execution time will be high for one run.
 # Until now I only found two solvers without bugs -
 #   EvalMaxSAT from the 2022 MSE hompage
 #   sat4j from the github repository -- it needs to be started from a shell script
@@ -26,17 +28,17 @@ mempeakFactor = 50
 solvers = {
     ## MSE 22 solver
     "MSE22-EvalMaxSAT": {
-        "solver_call": "../MaxSATFuzzer/MaxSATSolver/MSE22/EvalMaxSAT/bin/EvalMaxSAT_bin",
+        "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/MSE22/EvalMaxSAT/bin/EvalMaxSAT_bin",
         "input_format": "wcnf",
         "type": "complete",
         "short": "EMS",
     },
-    # "Pac-PC-DPW-Release": {
-    #     "solver_call": "../MaxSATFuzzer/MaxSATSolver/CertifiedSolver/certified-pacose.sh",
-    #     "input_format": "wcnf",
-    #     "type": "certified",
-    #     "short": "PPCDPW",
-    # },
+    "Pac-PC-DPW-Release": {
+        "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/CertifiedSolver/certified-pacose.sh",
+        "input_format": "wcnf",
+        "type": "certified",
+        "short": "PPCDPW",
+    },
 
     # "sat4j": {
     #     "solver_call": "./Others/sat4j.sh",

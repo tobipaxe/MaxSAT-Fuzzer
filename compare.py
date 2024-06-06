@@ -419,7 +419,7 @@ for solver in solvers:
 for solver in solversToRemove:
     del solvers[solver]
 
-if len(solvers) < 2:
+if len(solvers) < 1:
     print(solvers.keys())
     print(
         "ERROR: Only "
