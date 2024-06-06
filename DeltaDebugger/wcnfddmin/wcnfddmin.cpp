@@ -753,8 +753,9 @@ bool testCurrentPairs() {
   if (logging > 4)
     std::system(("cat " + tmpWCNFFileName).c_str());
 #endif
-  int rv = WEXITSTATUS(std::system(
-      (solver + " " + tmpWCNFFileName + " > /dev/null 2>&1").c_str()));
+  int solver_cmd = std::system(
+      (solver + " " + tmpWCNFFileName + " > /dev/null 2>&1").c_str());
+  int rv = WEXITSTATUS(solver_cmd);
   if (expectedExitCode == 0) {
     if (std::any_of(exitCodes.begin(), exitCodes.end(),
                     [&](int i) { return rv == i; })) {
