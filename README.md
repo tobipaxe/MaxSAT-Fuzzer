@@ -49,6 +49,17 @@ Additional fuzzers/instance generators can be found and used with the provided s
 - [GaussMaxHS](https:github.com/meelgroup/gaussmaxhs): Generally produces large instances with only few variations.
 - [MaxSAT Fuzzer](https:github.com/conp-solutions/maxsat-fuzzer): Produces partly incorrect instances, but these are identified and ignored by the fuzzing script.
 
+### Mac Users (bug fix)
+Apple's `time` command does not accept the `-q` (or `-f`) flags. You can solve this by installing `gnutime` and using the `gtime` command. Then, modify line 264 of `compare.py` as follows:
+```sh
+brew install gnu-time
+```
+Change line 264 in `compare.py`:
+```python
+command = ["gtime", "-q", "-f", "c mempeak %M"] + command_str.split()
+```
+This solution is based on: [Stack Overflow](https://stackoverflow.com/questions/55512479/time-commands-illegal-option)
+
 ## Usage
 
 ### Getting Help
