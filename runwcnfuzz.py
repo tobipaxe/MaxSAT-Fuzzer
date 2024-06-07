@@ -16,7 +16,12 @@ import csv
 import statistics
 import typing
 import psutil
-from config import fuzzers, wcnf_compare_script, delta_debugger_compare_script, delta_debugger
+from config import (
+    fuzzers,
+    wcnf_compare_script,
+    delta_debugger_compare_script,
+    delta_debugger,
+)
 
 minimize = 0
 min_free_disk_space = 2  # GB
@@ -29,6 +34,7 @@ analyze_last_xxx = 0
 faulty_wcnf_location = ""
 timeout = 0
 upper_bound = -1  # no upper bound enforced in the fuzzer
+location = ""
 lg_path = ""
 wcnfddmin_lg_path = ""
 ddmin_log_path = ""
@@ -85,6 +91,25 @@ invalid_description = {
     -2: "weight < 0",
     -1: "invalid p line",
 }
+
+
+def terminate_processes(process, sigterm_only=False):
+    try:
+        children = process.children(recursive=True)
+        for child in children:
+            if sigterm_only:
+                print(
+                    f"  Sending SIGTERM to PID {child.pid} with command line: {' '.join(child.cmdline())}"
+                )
+                child.terminate()  # Send SIGTERM (terminate)
+            else:
+                print(
+                    f"  Sending SIGKILL to PID {child.pid} with command line: {' '.join(child.cmdline())}"
+                )
+                child.kill()  # Send SIGKILL (kill)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        # Handle processes that no longer exist or are inaccessible
+        pass
 
 
 # Loop through all files *.lg files attach them to the *.log files
@@ -145,17 +170,19 @@ def cleanup():
 
     print("Cleaning up, this may take a while.")
     thread_timeout = 5
-    print(f"Terminating subprocesses by sending SIGTERM / SIGINT.")
+
+    print(f"Terminating all subprocesses.")
     if any(t.is_alive() for t in threads):
+        print(f"Send SIGTERM to all delta debugger subprocesses.")
         # Get all running processes and check for "compare.py" or "wcnfddmin"
         for proc in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
             try:
                 # Check if the process name contains either "compare.py" or "wcnfddmin"
                 cmdline = " ".join(proc.info["cmdline"])
                 if "wcnfddmin" in cmdline:
-                    print(
-                        f"  Sending SIGTERM to PID {proc.info['pid']} with command line: {cmdline}"
-                    )
+                    # print(
+                    #     f"  Sending SIGTERM to PID {proc.info['pid']} with command line: {cmdline}"
+                    # )
                     proc.terminate()  # Send SIGTERM (terminate)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 # Handle processes that no longer exist or are inaccessible
@@ -175,24 +202,29 @@ def cleanup():
             thread_timeout - (time.time() - start_time) > 0
         ):
             time.sleep(0.1)
-        if any(t.is_alive() for t in threads):
-            print(
-                "Some threads are still running. Sending SIGKILL to all remaining subprocesses."
-            )
-            for proc in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
-                try:
-                    # Check if the process name contains either "compare.py" or "wcnfddmin"
-                    cmdline = " ".join(proc.info["cmdline"])
-                    if "compare.py" in cmdline or "wcnfddmin" in cmdline:
-                        print(
-                            f"  Sending SIGTERM to PID {proc.info['pid']} with command line: {cmdline}"
-                        )
-                        proc.kill()  # Send SIGKILL to all remaining processes
 
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    # Handle processes that no longer exist or are inaccessible
-                    pass
-            time.sleep(0.1)
+    if any(t.is_alive() for t in threads):
+        print(
+            "Some threads are still running. Sending SIGTERM to ALL remaining subprocesses."
+        )
+        current_process = psutil.Process()
+
+        terminate_processes(current_process, sigterm_only=True)
+    
+    start_time = time.time()
+
+    while any(t.is_alive() for t in threads) and (
+        thread_timeout - (time.time() - start_time) > 0
+    ):
+        time.sleep(0.1)
+
+    if any(t.is_alive() for t in threads):
+        print(
+            "Some threads are still running. Sending SIGKILL to ALL remaining subprocesses."
+        )
+        current_process = psutil.Process()
+        # Send SIGTERM to all subprocesses
+        terminate_processes(current_process, sigterm_only=False)
 
     print("All threads terminated -- process cleanup done.")
 
@@ -228,6 +260,8 @@ def cleanup():
     if save_solver_timings:
         print("Print solver and fuzzer stats to csv.")
         for fuzz_name, fuzz_details in fuzzers.items():
+            if fuzz_name == "DeltaDebugger":
+                continue
             fuzz_details["stats"].write_instance_stats_to_csv(
                 csv_filename + "_" + fuzz_name + ".csv"
             )
@@ -264,7 +298,10 @@ def cleanup():
     # Print the descriptions and paths only if they exist
     for description, path in paths_and_descriptions:
         print_if_exists(description, path, "\033[1;30;42m")
-    #"\033[1;37m" <- bold white didn't work properly
+    csv_files = glob.glob(f"{location}/*.csv")
+    for file in csv_files:
+        print_if_exists("Solver/fuzzer statistics", file, "\033[1;30;42m")
+    # "\033[1;37m" <- bold white didn't work properly
     print()
 
     exit(0)
@@ -1316,7 +1353,9 @@ def print_status():
 
             compare_exit_codes = files_processed - files_error_free
             exit_codes_solvers = (
-                str(overall_non_zero_codes + compare_exit_codes) + "/" + str(error_tracker.error_counter)
+                str(overall_non_zero_codes + compare_exit_codes)
+                + "/"
+                + str(error_tracker.error_counter)
             )
             print(
                 # f"{RED}Non-zero Exit Codes        : {overall_non_zero_codes:>14}{RESET}"
@@ -1477,7 +1516,7 @@ def check_disk_space(folder_path):
 
 
 def main():
-    global ddmin_log_path, min_path, wcnfddmin_lg_path, delta_debugger_compare_script, minimize, analyze_last_xxx, folder, file_list, analyze_fuzzer_instances, analyze_solver_timings, save_solver_timings, terminate_flag, timeout, overall_number_threads, wcnf_compare_script, faulty_wcnf_location, log_path, lg_path, upper_bound, threads, csv_filename
+    global ddmin_log_path, min_path, wcnfddmin_lg_path, delta_debugger_compare_script, minimize, analyze_last_xxx, folder, file_list, analyze_fuzzer_instances, analyze_solver_timings, save_solver_timings, terminate_flag, timeout, overall_number_threads, wcnf_compare_script, faulty_wcnf_location, log_path, lg_path, upper_bound, threads, csv_filename, location
     parser = argparse.ArgumentParser(
         description="This is a parallel MaxSAT fuzzing script!!"
     )
