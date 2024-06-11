@@ -377,9 +377,10 @@ def create_command():
             with global_lock:
                 file = file_list.pop()
         else:
-            if not terminate_flag:
-                file = ""
-                terminate_flag = True
+            return False, False, False, False
+            # if not terminate_flag:
+            #     file = ""
+            #     terminate_flag = True
         return 0, fuzzer_name, file, wcnf_compare
     # print(seed, fuzzer_name, fuzz_command, wcnf_compare)
     return seed, fuzzer_name, fuzz_command, wcnf_compare
@@ -847,7 +848,7 @@ class StatsTracker:
 
     def write_instance_stats_to_csv(self, filename):
         if not self.instance_stats:
-            raise ValueError("The instance stats dictionary is empty.")
+            return
 
         # Collect all unique keys from nested dictionaries
         all_keys = set()
@@ -1326,9 +1327,12 @@ def run_program():
             if exit_code != 0:
                 stats.non_zero_codes += 1
                 overall_non_zero_codes += 1
+    if (threading.active_count() == 2):
+        print_status(True)
+        terminate_flag = True
 
 
-def print_status():
+def print_status(last_run = False):
     if terminate_flag:
         RED = GREEN = YELLOW = BLUE = RESET = ""
     else:
@@ -1456,6 +1460,9 @@ def print_status():
             print(f"{YELLOW}==== Bug Descriptions ============================={RESET}")
             for code, description in sorted(error_tracker.error_descriptions.items()):
                 print(f"{RED}Error {code}: {description}{RESET}")
+        
+        if (last_run):
+            return
 
         # if iterator % 1 == 1 and not terminate_flag:
         if not terminate_flag:
@@ -1663,6 +1670,7 @@ def main():
             t.start()
 
         print_status()
+
         if terminate_flag:
             cleanup()
 
