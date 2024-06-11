@@ -1327,7 +1327,7 @@ def run_program():
             if exit_code != 0:
                 stats.non_zero_codes += 1
                 overall_non_zero_codes += 1
-    if (threading.active_count() == 2):
+    if (not terminate_flag and threading.active_count() == 2):
         print_status(True)
         terminate_flag = True
 
