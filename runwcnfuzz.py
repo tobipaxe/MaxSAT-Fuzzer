@@ -178,12 +178,14 @@ def cleanup():
         for proc in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
             try:
                 # Check if the process name contains either "compare.py" or "wcnfddmin"
-                cmdline = " ".join(proc.info["cmdline"])
-                if "wcnfddmin" in cmdline:
-                    # print(
-                    #     f"  Sending SIGTERM to PID {proc.info['pid']} with command line: {cmdline}"
-                    # )
-                    proc.terminate()  # Send SIGTERM (terminate)
+                cmdline = proc.info["cmdline"]
+                if isinstance(cmdline, list):
+                    cmdline_str = " ".join(proc.info["cmdline"])
+                    if "wcnfddmin" in cmdline_str:
+                        # print(
+                        #     f"  Sending SIGTERM to PID {proc.info['pid']} with command line: {cmdline}"
+                        # )
+                        proc.terminate()  # Send SIGTERM (terminate)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 # Handle processes that no longer exist or are inaccessible
                 pass
@@ -275,10 +277,27 @@ def cleanup():
                 os.remove(file)
             except FileNotFoundError:
                 print("File not found.")
+    # Remove all /tmp/*.cnf files (from the check if hard clauses are sat)
+    cnf_files = glob.glob("/tmp/*.cnf")
+    for file in cnf_files:
+        if os.path.exists(file):
+            try:
+                os.remove(file)
+            except FileNotFoundError:
+                print("File not found.")
     # Remove all /tmp/*.pbp files
     # Created with certified solver scripts
     pbp_files = glob.glob("/tmp/*.pbp")
     for file in pbp_files:
+        if os.path.exists(file):
+            try:
+                os.remove(file)
+            except FileNotFoundError:
+                print("File not found.")
+    # Remove all /tmp/*.pblog files
+    # Created with certified solver scripts
+    pblog_files = glob.glob("/tmp/*.pblog")
+    for file in pblog_files:
         if os.path.exists(file):
             try:
                 os.remove(file)
