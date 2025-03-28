@@ -2,6 +2,9 @@
 
 timeoutFactor = 50
 mempeakFactor = 50
+new_rules = True
+# mem limit in MB
+mem_limit_for_one_solver_call = 32000
 
 # SOLVER CONFIGURATION
 # PLEASE ADD OWN SOLVERS TO THE DICTIONARY IN THE FOLLOWING WAY

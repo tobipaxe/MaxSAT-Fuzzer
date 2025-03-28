@@ -16,13 +16,16 @@ import csv
 import statistics
 import typing
 import psutil
-from config import (
+from configPrivate import (
     fuzzers,
     wcnf_compare_script,
     delta_debugger_compare_script,
     delta_debugger,
+    solvers
 )
 
+global_timeout = -1
+fuzzer_timeout = -1
 minimize = 0
 min_free_disk_space = 2  # GB
 free_first_time = 0
@@ -49,6 +52,9 @@ time_first_time = -1
 files_processed = 0
 files_error_free = 0
 
+
+# List to store exception errors
+exception_errors = []
 
 # ANSI escape codes for colored output
 RED = "\033[31m"
@@ -84,6 +90,7 @@ invalid_description = {
     -103: "ddmin no error after reduction",
     -102: "ddmin non-deterministic error",
     -101: "ddmin parse error",
+    -7: "All Solver timed out or had issues",
     -6: "invalid compare.py return value",
     -5: "upper bound violation",
     -4: "fuzzer return code invalid",
@@ -327,37 +334,53 @@ def cleanup():
 
 
 def select_fuzzer():
+    global terminate_flag
     if folder is not None:
         fuzzer = os.path.basename(os.path.normpath(folder))
         fuzzers[fuzzer]["stats"].active_executions += 1
         return fuzzer
 
-    if overall_loops < 10 * len(fuzzers):
+    # if overall_loops < 10 * overall_number_threads and all(fuzzer_details["stats"].loops == 0 for key, fuzzer_details in fuzzers.items() if key != "DeltaDebugger"):
+    #     available_fuzzers = [key for key in fuzzers if key != "DeltaDebugger"]
+    #     fuzzer = random.choice(available_fuzzers)
+    #     fuzzers[fuzzer]["stats"].active_executions += 1
+    #     return fuzzer
+    
+    if overall_loops < 50 * overall_number_threads and not (all(fuzzer_details["stats"].loops > 2 for key, fuzzer_details in fuzzers.items() if key != "DeltaDebugger")):
         available_fuzzers = [key for key in fuzzers if key != "DeltaDebugger"]
-        fuzzer = random.choice(available_fuzzers)
+        # Find the fuzzer(s) with the lowest number of active executions
+        min_active_executions = min(
+            fuzzers[f]["stats"].active_executions for f in available_fuzzers
+        )
+        candidates = [
+            f for f in available_fuzzers if fuzzers[f]["stats"].active_executions == min_active_executions
+        ]
+        # Choose one randomly among the candidates
+        fuzzer = random.choice(candidates)
         # print(f"loops: {overall_loops}, fuzzer: {fuzzer}")
         fuzzers[fuzzer]["stats"].active_executions += 1
         return fuzzer
 
     min_execution_time = float("inf")
 
-    for fuzzer_name, fuzzer_details in fuzzers.items():
-        if fuzzer_name == "DeltaDebugger":
+    for inner_fuzzer_name, fuzzer_details in fuzzers.items():
+        if inner_fuzzer_name == "DeltaDebugger":
             continue
         avg_execution_time = (
             fuzzer_details["stats"].execution_time / fuzzer_details["stats"].loops
             if fuzzer_details["stats"].loops > 0
-            else 0
-        )
+            else 10 # overall_execution_time / (overall_loops + 1) + fuzzer_details["stats"].execution_time + fuzzer_details["stats"].active_executions        
+            )
         if (
             fuzzer_details["stats"].execution_time
             + (fuzzer_details["stats"].active_executions * avg_execution_time)
             < min_execution_time
         ):
-            min_execution_time = fuzzer_details["stats"].execution_time
-            next_fuzzer = fuzzer_name
+            min_execution_time = fuzzer_details["stats"].execution_time + fuzzer_details["stats"].active_executions * avg_execution_time
+            # print("inner_fuzzer_name: " + inner_fuzzer_name + " execution_time: " + str(fuzzer_details["stats"].execution_time + (fuzzer_details["stats"].active_executions * avg_execution_time)))
+            next_fuzzer = inner_fuzzer_name
     fuzzers[next_fuzzer]["stats"].active_executions += 1
-    # print(f"loops: {overall_loops}, min_execution_time: {min_execution_time} fuzzer: {next_fuzzer}")
+    
     return next_fuzzer
 
 
@@ -367,14 +390,16 @@ def create_command():
 
     instance = error_tracker.get_next_instance_to_reduce()
     if instance is not None:
-        # print(instance)
-        # print(os.path.abspath(instance[2][0]))
-        # print(delta_debugger)
+        # print("instance: ", instance)
+        # print("os.path.abspath(instance[2][0])", os.path.abspath(instance[2][0]))
         with global_lock:
             fuzzers["DeltaDebugger"]["stats"].active_executions += 1
         return -1, instance[0], instance[1], os.path.abspath(instance[2][0])
 
     fuzzer_name = select_fuzzer()
+    if fuzzer_name == "DeltaDebugger":
+        print("DeltaDebugger is not available at this position!")
+        terminate_flag = True 
     fuzzer_dict = fuzzers[fuzzer_name]
     seed = random.getrandbits(64)
     # print("seed: " + str(seed) + " < 2**64? " + str(seed < 2**64))
@@ -433,13 +458,23 @@ class ErrorTrackingSystem:
     ):
         self.error_counter += 1
 
+        #print("self, solver, fuzzer, error_code, error_description, wcnf_instance, execution_time, do_minimization:", self, solver, fuzzer, error_code, error_description, wcnf_instance, execution_time, do_minimization)
+
         # Ensure the solver/error structure exists
         if solver not in self.solver_errors:
             self.solver_errors[solver] = {}
         if error_code not in self.solver_errors[solver]:
             self.solver_errors[solver][error_code] = {}
+            # Add the first occurrence time for the overall execution time
+            self.solver_errors[solver][error_code]["_first_occurrence_time"] = round(overall_execution_time, 1)
         if fuzzer not in self.solver_errors[solver][error_code]:
             self.solver_errors[solver][error_code][fuzzer] = 0
+            # Add the first occurrence time for the specific fuzzer execution time
+            first_occurrence_time = fuzzers[fuzzer]["stats"].execution_time
+            if first_occurrence_time == 0:
+                first_occurrence_time = overall_execution_time / overall_number_threads
+            self.solver_errors[solver][error_code][fuzzer + "_first_occurrence_time"] = round(first_occurrence_time, 1)
+            # self.solver_errors[solver][error_code][fuzzer + "_first_occurrence_time"] = round(fuzzers[fuzzer]["stats"].execution_time, 1)
 
         # Update counts and descriptions
         self.solver_errors[solver][error_code][fuzzer] += 1
@@ -459,6 +494,7 @@ class ErrorTrackingSystem:
             self.error_occurrences[solver][error_code].append(
                 (wcnf_instance, execution_time)
             )
+            #print("self.error_occurrences: ", self.error_occurrences)
 
         # Initialize debugger counters if necessary
         if solver not in self.active_debuggers:
@@ -493,6 +529,13 @@ class ErrorTrackingSystem:
         Returns the error combination with fewer than two active debuggers and fewer than five successful reductions,
         prioritizing those with fewer active + successful reductions, and selects the instance with the lowest execution time.
         """
+        if minimize == 0:
+            return None
+
+        active_executions = fuzzers["DeltaDebugger"]["stats"].active_executions
+        if overall_loops < 25 * len(fuzzers) or (active_executions >= (overall_number_threads / 2) and overall_number_threads != 1) :
+            return None
+
         candidates = []
 
         # Collect all suitable combinations that meet the criteria
@@ -522,6 +565,7 @@ class ErrorTrackingSystem:
 
         # Sort candidates based on priority score
         candidates.sort(key=lambda x: x[0])
+        # print("candidates: ", candidates)
 
         # Return the candidate with the lowest execution time
         if candidates:
@@ -547,32 +591,33 @@ class ErrorTrackingSystem:
                     total += fuzz[fuzzer_name]
         return total
 
-    def all_errors(self):
+    def all_errors(self, average_execution_time):
         messages = []
         for solver, errors in self.solver_errors.items():
             for error_code, fuzz in sorted(errors.items()):
-                error_count = sum(fuzz.values())
-                messages.append(f"{solver}({error_code}):{error_count}")
+                error_count = sum(
+                    count for key, count in fuzz.items() if not key.endswith("_first_occurrence_time")
+                )
+                first_occurrence_time = self.solver_errors[solver][error_code].get("_first_occurrence_time")
+                if first_occurrence_time == 0:
+                    first_occurrence_time += average_execution_time
+                first_occurrence_time = round(first_occurrence_time, 1)
+                messages.append(f"{solver}({error_code}):{error_count}/{first_occurrence_time}")
         return len(messages), ", ".join(messages)
 
-    def fuzzer_errors(self, specific_fuzzer):
+    def fuzzer_errors(self, specific_fuzzer, average_execution_time):
         messages = []
         for solver, errors in self.solver_errors.items():
             for error_code, fuzz in sorted(errors.items()):
                 if specific_fuzzer in fuzz:
-                    messages.append(f"{solver}({error_code}):{fuzz[specific_fuzzer]}")
+                    first_occurrence_time = self.solver_errors[solver][error_code].get(f"{specific_fuzzer}_first_occurrence_time")
+                    if first_occurrence_time == 0:
+                        first_occurrence_time += average_execution_time
+                    first_occurrence_time = round(first_occurrence_time, 1)
+                    messages.append(f"{solver}({error_code}):{fuzz[specific_fuzzer]}/{first_occurrence_time}")
         return len(messages), ", ".join(messages)
 
-    # def unique_fuzzer_errors(self, specific_fuzzer):
-    #     messages = []
-    #     for solver, errors in self.solver_errors.items():
-    #         for error_code, fuzz in sorted(errors.items()):
-    #             # Check if this error was only found by the specific fuzzer
-    #             if specific_fuzzer in fuzz and len(fuzz) == 1:
-    #                 messages.append(f"{solver}({error_code}):{fuzz[specific_fuzzer]}")
-    #     return len(messages), ", ".join(messages)
-
-    def unique_fuzzer_errors(self, specific_fuzzer, exclude_fuzzer=None):
+    def unique_fuzzer_errors(self, specific_fuzzer, average_execution_time, exclude_fuzzer=None):
         messages = []
         for solver, errors in self.solver_errors.items():
             for error_code, fuzz in sorted(errors.items()):
@@ -580,15 +625,19 @@ class ErrorTrackingSystem:
                 if specific_fuzzer in fuzz:
                     # Exclude the excluded fuzzer if specified
                     filtered_fuzzers = {
-                        f: c for f, c in fuzz.items() if f != exclude_fuzzer
+                        f: c for f, c in fuzz.items() if f != exclude_fuzzer and not f.endswith("_first_occurrence_time")
                     }
                     # Check if the error is unique to the specific fuzzer among the filtered fuzzers
                     if (
                         len(filtered_fuzzers) == 1
                         and specific_fuzzer in filtered_fuzzers
                     ):
+                        first_occurrence_time = self.solver_errors[solver][error_code].get(f"{specific_fuzzer}_first_occurrence_time")
+                        if first_occurrence_time == 0:
+                            first_occurrence_time += average_execution_time
+                        first_occurrence_time = round(first_occurrence_time, 1)
                         messages.append(
-                            f"{solver}({error_code}):{filtered_fuzzers[specific_fuzzer]}"
+                            f"{solver}({error_code}):{filtered_fuzzers[specific_fuzzer]}/{first_occurrence_time}"
                         )
         return len(messages), ", ".join(messages)
 
@@ -647,6 +696,7 @@ class StatsTracker:
             {}
         )  # Key: solver name, Value: {"time": [min, max, avg, count], "memory": [min, max, avg, count]}
         self.last_seed = 0
+        self.last_name = "" 
         self.loops = 0
         self.compare_loops = 0
         self.execution_time = 0
@@ -655,19 +705,27 @@ class StatsTracker:
         self.active_executions = 0
 
     def update_general_stat(self, stat_name, value):
+        # print(self, stat_name, value)
+
         if save_solver_timings and stat_name == "Seed":
             self.last_seed = value
             self.instance_stats[self.last_seed] = {}
+            self.instance_stats[self.last_seed]["Name"] = os.path.basename(self.last_name)
             return
         elif stat_name == "Seed":
+            return
+        if save_solver_timings and stat_name == "Name":
+            self.last_name = value
+            return
+        elif stat_name == "Name":
             return
         stat = self.general_stats[stat_name]
         if stat_name == "satisfiable":
             if save_solver_timings:
                 self.instance_stats[self.last_seed][stat_name] = value
-            if value:
+            if value == "True":
                 stat["SAT"] += 1
-            else:
+            elif value == "False":
                 stat["UNSAT"] += 1
             return
         if stat_name == "SumOfWeights":
@@ -683,6 +741,10 @@ class StatsTracker:
             stat["zero"] += 1
         if stat_name == "MaxWeight" and value == 1:
             stat["one"] += 1
+
+    def update_solver_error(self, solver_name, error_code):
+        if save_solver_timings:
+            self.instance_stats[self.last_seed]["error" + solver_name] = error_code
 
     def update_solver_stat(self, solver_name, time, memory):
         if save_solver_timings:
@@ -713,7 +775,7 @@ class StatsTracker:
                 solver["count"] += 1
             else:
                 solver["timeout"] += 1
-
+    
     def dump_instance_analysis(self):
         if self.loops < 15:
             return
@@ -767,7 +829,9 @@ class StatsTracker:
         if self.loops < 15:
             return
         print("")
-        solver_name_width = max(len(solver_name) for solver_name in self.solvers) + 4
+        solver_name_width = 4
+        if len(self.solvers) > 0:
+            solver_name_width = max(len(solver_name) for solver_name in self.solvers) + 4
         print(
             f"{'      ':<{solver_name_width}} Time                                                         Memory"
         )
@@ -782,11 +846,11 @@ class StatsTracker:
                 solver["memory"]["sum"] / solver["count"] if solver["count"] > 0 else 0
             )
             timeouts = (
-                solver["timeout"] / solver["overall_counter"]
+                solver["timeout"] / solver["overall_counter"] * 100
                 if solver["overall_counter"] > 0
                 else 0
             )
-            timeouts = f"{timeouts:.4f}%"
+            timeouts = f"{timeouts:.3f}%"
             time_stats = f"{solver['time']['min']:<15.3f}{solver['time']['max']:<15.3f}{avg_time:<15.3f}{timeouts:<15}"
             memory_stats = f"{solver['memory']['min']:<15}{solver['memory']['max']:<15}{avg_memory:<15.0f}"
             print(f"{solver_name:<{solver_name_width}} {time_stats:<30} {memory_stats}")
@@ -946,8 +1010,10 @@ def check_compare_output(output, fuzzer, save_stats, do_minimization):
     # Pattern to match the lines and capture the error code and the rest of the description
     pattern = r"c (\w+) with ERROR CODE  (\d+)  and FAULT DESCRIPTION:  (.*)$"
     solver_stats = False
-    no_error = True
+    no_error = 1
     current_wcnf = ""
+
+    #print(output)
 
     for line in output:
         # print(line)
@@ -956,9 +1022,14 @@ def check_compare_output(output, fuzzer, save_stats, do_minimization):
 
         if line.startswith("c copy saved as: "):
             current_wcnf = line[17:]
+            #print(current_wcnf)
+        if line.startswith( "c ISSUE: No valid results due to timeout or all solver had issues!!!"):
+            return -7
         if line.startswith("c Total time...: "):
             compare_time = float(line[17:])
         if save_stats:
+            if line.startswith("c WCNF-FILE....: "):
+                fuzzers[fuzzer]["stats"].update_general_stat("Name", line[17:])
             if line.startswith("c SEED.........:"):
                 # with global_lock:
                 fuzzers[fuzzer]["stats"].update_general_stat("Seed", int(line[17:]))
@@ -995,11 +1066,15 @@ def check_compare_output(output, fuzzer, save_stats, do_minimization):
                 continue
             if line.startswith("c Hard clauses.: SATISFIABLE"):
                 # with global_lock:
-                fuzzers[fuzzer]["stats"].update_general_stat("satisfiable", True)
+                fuzzers[fuzzer]["stats"].update_general_stat("satisfiable", "True")
                 continue
             if line.startswith("c Hard clauses.: UNSATISFIABLE"):
                 # with global_lock:
-                fuzzers[fuzzer]["stats"].update_general_stat("satisfiable", False)
+                fuzzers[fuzzer]["stats"].update_general_stat("satisfiable", "False")
+                continue
+            if line.startswith("c Hard clauses.: UNKNOWN"):
+                # with global_lock:
+                fuzzers[fuzzer]["stats"].update_general_stat("satisfiable", "UNKNOWN")
                 continue
             if line.startswith("c Best o value.:"):
                 # with global_lock:
@@ -1032,9 +1107,11 @@ def check_compare_output(output, fuzzer, save_stats, do_minimization):
 
         match = re.match(pattern, line)
         if match:
-            no_error = False
+            #print(line)
+            no_error = 0
             solver_name, error_code, description = match.groups()
             # with global_lock:
+            #print("execute: ", solver_name, current_wcnf, error_code, description)
             error_tracker.add_error(
                 solver_name,
                 fuzzer,
@@ -1044,6 +1121,8 @@ def check_compare_output(output, fuzzer, save_stats, do_minimization):
                 compare_time,
                 do_minimization,
             )
+            if save_stats:
+                fuzzers[fuzzer]["stats"].update_solver_error(solver_name, int(error_code))
     return no_error
 
 
@@ -1076,15 +1155,25 @@ def find_and_sort_files(directory, substring):
     return sorted_files
 
 
+def find_solver_by_short_name(myShortName):
+    for key, value in solvers.items():
+        if value.get("short") == myShortName:
+            return key
+    return None
+
+
 def combine_log_files_with_substring(directory, substring, solver, fault_code):
     global files_error_free, files_processed
     sorted_files = find_and_sort_files(directory, substring)
     # print(sorted_files)
+    solver_long_name = find_solver_by_short_name(solver)
 
     # Dictionary to track first occurrences of solver_name and return_code combinations
     first_occurrences = {}
-    combination_key = (solver, fault_code)
+    combination_key = (solver_long_name, fault_code)
     first_occurrences[combination_key] = True
+    # print(f"combination_key: {combination_key}")
+    # print(f"first_occurrences: {first_occurrences}")
 
     for file in sorted_files:
 
@@ -1107,15 +1196,21 @@ def combine_log_files_with_substring(directory, substring, solver, fault_code):
         # Determine if this is the first occurrence of the solver_name and return_code combination
         # only then activate the delta debugger for that combination.
         # This will be probably the smallest file for that occurence (as it occured latest in the logs)
-        combination_key = (solver_name, return_code)
+        combination_key = (solver_name, int(return_code))
         do_minimization = combination_key not in first_occurrences
-        first_occurrences[combination_key] = True
+        # print(f"combination_key: {combination_key}")
+        # print(f"first_occurrences: {first_occurrences}")
+        # print(f"do_minimization: {do_minimization}")
+        if not do_minimization:
+            first_occurrences[combination_key] = True
         error_free = check_compare_output(
             content, "DeltaDebugger", False, do_minimization
         )
 
         if error_free:
             files_error_free += 1
+        elif error_free == -7:
+            exception_errors.append({"fuzzer": "DeltaDebugger", "seed": "XX", "error": "All solver timed out or had issues."})
 
         # Check if the last line starts with "c rc"
         if last_line.startswith("c rc"):
@@ -1136,6 +1231,7 @@ def call_delta_debugger(solver, fault_code, instance):
     # print(f"Error occurences: {error_tracker.error_occurrences}")
     # global fuzzers, error_tracker
     # print("Calling delta debugger")
+    # print(f"{instance} - {solver} - {fault_code}")
     compare_command = delta_debugger_compare_script + "_--solvers_" + solver
     # print(f"compare_command: {compare_command}")
     instance_basename = os.path.basename(instance)
@@ -1243,7 +1339,14 @@ def call_delta_debugger(solver, fault_code, instance):
     elif delta_debugger_output.returncode != 0:
         print(f"ddmin strange returncode: {delta_debugger_output.returncode}")
 
-    # print(f"delta_debugger_output.returncode {delta_debugger_output.returncode}")
+    #print(f"delta_debugger_output.returncode {delta_debugger_output.returncode}")
+    
+    # this exit statement is temporary needed to bugfix, need to remove it later!!!!!
+    # if delta_debugger_output.returncode != 0:
+    #     print(delta_debugger_command)
+    #     global terminate_flag
+    #     terminate_flag = True
+    #     exit(1)
 
     return_code = 0
     if delta_debugger_output.returncode < 0:
@@ -1266,6 +1369,13 @@ def call_fuzzer_and_solver(seed, name, fuzzer, wcnfCompare=wcnf_compare_script):
     if sum_of_weights < 0:
         if os.path.exists(wcnf):
             os.remove(wcnf)
+        if sum_of_weights == -1:
+            exception_errors.append({"fuzzer": name, "seed": seed, "error": "invalid p line"})
+        elif sum_of_weights == -2:
+            exception_errors.append({"fuzzer": name, "seed": seed, "error": "weights < 0"})
+        elif sum_of_weights == -4:
+            exception_errors.append({"fuzzer": name, "seed": seed, "error": "file does not exist"})
+
         # returns -1 for invalid p line
         # returns -2 for weights < 0
         # returns -3 for some strange input lines
@@ -1274,6 +1384,7 @@ def call_fuzzer_and_solver(seed, name, fuzzer, wcnfCompare=wcnf_compare_script):
     elif seed and createWCNF.returncode != 0:
         if os.path.exists(wcnf):
             os.remove(wcnf)
+            exception_errors.append({"fuzzer": name, "seed": seed, "error": f"fuzzer invalid returncode {createWCNF.returncode}"})
         return -4
     elif upper_bound != -1 and sum_of_weights > upper_bound:
         if os.path.exists(wcnf):
@@ -1292,13 +1403,20 @@ def call_fuzzer_and_solver(seed, name, fuzzer, wcnfCompare=wcnf_compare_script):
 
     if solverOut.returncode != 0:
         with global_lock:
-            if check_compare_output(
+            value = check_compare_output(
                 solverOut.stdout.strip().splitlines(), name, analyze_timings, True
-            ):
+            )
+            if value == 1:
                 if seed and os.path.exists(wcnf):
                     os.remove(wcnf)
-                # no error match in compare script
+                if terminate_flag:
+                    return 0
+                exception_errors.append({"fuzzer": name, "seed": seed, "error": "invalid compare.py return value"})
                 return -6
+            elif value == -7:
+                exception_errors.append({"fuzzer": name, "seed": seed, "error": "All solver timed out or had issues."})
+                return -7
+                
     elif analyze_timings:
         with global_lock:
             check_compare_output(
@@ -1312,7 +1430,7 @@ def call_fuzzer_and_solver(seed, name, fuzzer, wcnfCompare=wcnf_compare_script):
 
 
 def run_program():
-    global overall_execution_time, overall_non_zero_codes, overall_loops, zero_codes, non_zero_codes, execution_times, return_codes, terminate_flag
+    global overall_execution_time, overall_non_zero_codes, overall_loops, zero_codes, non_zero_codes, execution_times, return_codes, terminate_flag, global_timeout, fuzzer_timeout
     while not terminate_flag:
         start_time = time.time()
         fuzzer_and_solver_vec = create_command()
@@ -1346,12 +1464,36 @@ def run_program():
             if exit_code != 0:
                 stats.non_zero_codes += 1
                 overall_non_zero_codes += 1
+
+            # --- Timeout check: global and per-fuzzer --
+            # Check if overall_execution_time exceeds globalTimeout
+            if global_timeout != -1 and overall_execution_time > global_timeout:
+                print(f"Global timeout reached: overall_execution_time ({overall_execution_time:.2f}s) > {global_timeout}s")
+                terminate_flag = True
+                break
+
+            # Check if every fuzzer (except DeltaDebugger) has average execution time > fuzzerTimeout
+            if not terminate_flag and fuzzer_timeout != -1:
+                all_exceed = True
+                for name, fuzzer_details in fuzzers.items():
+                    if name == "DeltaDebugger":
+                        continue
+                    s = fuzzer_details["stats"]
+                    if s.execution_time <= fuzzer_timeout:
+                        all_exceed = False
+                        break
+                if all_exceed:
+                    print(f"Fuzzer timeout reached: all fuzzer execution times > {fuzzer_timeout}s")
+                    terminate_flag = True
+                    break
+        # end of with global_lock
+
     if (not terminate_flag and threading.active_count() == 2):
         print_status(True)
         terminate_flag = True
 
 
-def print_status(last_run = False):
+def print_status(last_run=False):
     if terminate_flag:
         RED = GREEN = YELLOW = BLUE = RESET = ""
     else:
@@ -1391,10 +1533,11 @@ def print_status(last_run = False):
             print(
                 f"{YELLOW}Number Threads             : {overall_number_threads:>14}{RESET}"
             )
-            error_counter, error_details = error_tracker.all_errors()
+            average_time = overall_execution_time / overall_loops if overall_loops != 0 else 0
+            error_counter, error_details = error_tracker.all_errors(average_time)
             # print(error_tracker.
             print(f"{YELLOW}Errors Found               : {error_counter:>14}{RESET}")
-            print(f"{YELLOW}Solver(Bug):Count          : {error_details:>14}{RESET}")
+            print(f"{YELLOW}Solver(Bug):Count/1.Time   : {error_details:>14}{RESET}")
             print(f"{YELLOW}================================={RESET}")
 
             for fuzzer_name, fuzzer_details in fuzzers.items():
@@ -1429,6 +1572,10 @@ def print_status(last_run = False):
                     print(
                         f"{BLUE}Total Executions           : {stats.loops:>14}{RESET}"
                     )
+                    # print(
+                    #     f"{BLUE}Active Executions          : {stats.active_executions:>14}{RESET}"
+                    # )
+
                 average_time = (
                     0 if stats.loops == 0 else stats.execution_time / stats.loops
                 )
@@ -1443,10 +1590,10 @@ def print_status(last_run = False):
                 if fuzzer_name == "DeltaDebugger":
                     exclude_fuzzer = None
                     bug_string = "Bugs: Only DDMin/All       : "
-                unique_error_counter, error_details = (
-                    error_tracker.unique_fuzzer_errors(fuzzer_name, exclude_fuzzer)
+                unique_error_counter, unique_error_details = (
+                    error_tracker.unique_fuzzer_errors(fuzzer_name, average_time, exclude_fuzzer)
                 )
-                error_counter, error_details = error_tracker.fuzzer_errors(fuzzer_name)
+                error_counter, error_details = error_tracker.fuzzer_errors(fuzzer_name, average_time)
                 unique_all_rc_counter = (
                     str(unique_error_counter) + "/" + str(error_counter)
                 )
@@ -1454,10 +1601,10 @@ def print_status(last_run = False):
                 if terminate_flag:
                     if unique_error_counter > 0:
                         print(
-                            f"{BLUE}Unique Solver(Bug):Count   : {error_details:>14}{RESET}"
+                            f"{BLUE}Unique Solver(Bug):Count/1T: {unique_error_details:>14}{RESET}"
                         )
                     print(
-                        f"{BLUE}Solver(Bug):Count          : {error_details:>14}{RESET}"
+                        f"{BLUE}Solver(Bug):Count/1.Time   : {error_details:>14}{RESET}"
                     )
                 if stats.invalid_instances:
                     invalid_string = "{"
@@ -1479,6 +1626,11 @@ def print_status(last_run = False):
             print(f"{YELLOW}==== Bug Descriptions ============================={RESET}")
             for code, description in sorted(error_tracker.error_descriptions.items()):
                 print(f"{RED}Error {code}: {description}{RESET}")
+            print(f"{YELLOW}================================={RESET}")
+            if terminate_flag and exception_errors:
+                print(f"{RED}Exception Errors:{RESET}")
+                for error in exception_errors:
+                    print(f"{RED}Fuzzer: {error['fuzzer']}, Seed: {error['seed']}, Error: {error['error']}{RESET}")
         
         if (last_run):
             return
@@ -1488,7 +1640,7 @@ def print_status(last_run = False):
             check_disk_space(".")
 
         if int(overall_loops) < 100:
-            time_to_sleep = 2
+            time_to_sleep = 1
         else:
             time_to_sleep = int(math.log10(int(overall_loops)))
 
@@ -1542,7 +1694,7 @@ def check_disk_space(folder_path):
 
 
 def main():
-    global ddmin_log_path, min_path, wcnfddmin_lg_path, delta_debugger_compare_script, minimize, analyze_last_xxx, folder, file_list, analyze_fuzzer_instances, analyze_solver_timings, save_solver_timings, terminate_flag, timeout, overall_number_threads, wcnf_compare_script, faulty_wcnf_location, log_path, lg_path, upper_bound, threads, csv_filename, location
+    global ddmin_log_path, min_path, wcnfddmin_lg_path, delta_debugger_compare_script, minimize, analyze_last_xxx, folder, file_list, analyze_fuzzer_instances, analyze_solver_timings, save_solver_timings, terminate_flag, timeout, overall_number_threads, wcnf_compare_script, faulty_wcnf_location, log_path, lg_path, upper_bound, threads, csv_filename, location, global_timeout, fuzzer_timeout
     parser = argparse.ArgumentParser(
         description="This is a parallel MaxSAT fuzzing script!!"
     )
@@ -1558,6 +1710,17 @@ def main():
         type=int,
         help="Timeout for each complete MaxSAT Solver (as argument for compare script).",
     )
+    parser.add_argument(
+        "--globalTimeout",
+        default=-1,
+        type=int, 
+        help="Terminate if overall execution time (in seconds) exceeds this value."
+        ) 
+    parser.add_argument(
+        "--fuzzerTimeout",
+        default=-1,
+        type=float, 
+        help="Terminate if the execution time for each fuzzer (except DeltaDebugger) exceeds this value (in seconds).")
     parser.add_argument(
         "--minimize",
         default=5,
@@ -1681,6 +1844,9 @@ def main():
         os.makedirs(min_path)
     if not os.path.exists(ddmin_log_path) or not os.path.isdir(ddmin_log_path):
         os.makedirs(ddmin_log_path)
+
+    global_timeout = args.globalTimeout
+    fuzzer_timeout = args.fuzzerTimeout
 
     try:
         for i in range(overall_number_threads):

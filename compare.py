@@ -9,9 +9,10 @@ import sys
 import time
 from datetime import date
 import statistics
+import resource
 import psutil
 import wcnfTool
-from config import solvers, timeoutFactor, mempeakFactor
+from configPrivate import new_rules, solvers, timeoutFactor, mempeakFactor, mem_limit_for_one_solver_call
 
 
 def is_valid_file(arg):
@@ -148,8 +149,9 @@ if seed == "" and any(
             )
         )
     )
-if seed == "":
-    seed = str(random.randrange(1, 2**32 - 1))
+if seed == "" or len(seed) < 20:
+    seed += str(random.randrange(1, 2**32 - 1))
+
 long_seed = seed + "-" + str(random.randrange(1, 2**32 - 1))
 
 current_directory = os.getcwd()
@@ -241,13 +243,19 @@ def terminate_process_and_children(process):
     return (process.communicate(), killed)
 
 
+def set_memory_limit():
+    soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+    memory_limit = mem_limit_for_one_solver_call * 1024 * 1024  # 500 MB
+    resource.setrlimit(resource.RLIMIT_AS, (memory_limit, hard))
+
+
 def SolverCall(solver):
     if solver["type"] == "anytime":
         solver["anytime"] = True
         time_out = anytime_timeout
     elif solver["type"] == "certified":
         solver["anytime"] = False
-        time_out = 30 * args.timeout
+        time_out = 2 * args.timeout
     else:
         solver["anytime"] = False
         time_out = args.timeout
@@ -267,7 +275,7 @@ def SolverCall(solver):
     # print(command)
 
     with subprocess.Popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, preexec_fn=set_memory_limit
     ) as process:
         try:
             while True:
@@ -312,7 +320,40 @@ def SolverCall(solver):
         return
 
     vline = ""
+    runsolver_script = False
+    special_timeout = False
+    special_memout = False
+    counter = 0
     for line in solver["stdout"].split("\n"):
+        if line.startswith("c runsolver script"):
+            runsolver_script = True
+        if runsolver_script:
+            counter += 1
+            if line.startswith("EOF") and counter == 1:
+                solver["ERROR_solver"] = "empty"
+            if line.startswith("CPUTIME="):
+                solver["time"] = float(line.split("=")[1])
+            elif line.startswith("Child status:"):
+                solver["return_code"] = int(line.split()[2])
+            elif line.startswith("terminate called after throwing an instance of"):
+                solver["stderr"] += line
+            elif line.startswith("MAXVM="):
+                solver["mempeak"] = float(line.split("=")[1])
+            elif line.startswith("CPU time exceeded") or line.startswith("Maximum wall clock time exceeded:"):
+                special_timeout = True
+                # solver["s-status"] = "TIMEOUT"
+                # solver["checked_result"] = "TIMEOUT"
+                # del solver["time"]
+                # # print("TIMEOUT: " + solver["solver_call"])
+                # return
+            elif line.startswith("Maximum VSize exceeded:") or line.startswith("c Out of memory") or "OutOfMemoryException" in line or "std::bad_alloc" in line:
+                special_memout = True
+                # solver["s-status"] = "MEMOUT"
+                # solver["checked_result"] = "MEMOUT"
+                # # print("MEMOUT: " + solver["solver_call"])
+                # del solver["time"]
+                # return
+        
         if line.startswith("s "):
             solver["s-status"] = line[2:]
             if solver["s-status"] == "SATISFIABLE":
@@ -326,7 +367,7 @@ def SolverCall(solver):
                 try:
                     solver["o-value"] = int(line[2:])
                 except ValueError:
-                    solver["ERROR_solver"] = f"string in o-value: {line[2:]}"
+                    solver["ERROR_solver"] = f"string in o-value (example): {line[0:]}"
             else:
                 # only hard clauses -- but they are satisfiable
                 solver["o-value"] = 0
@@ -350,6 +391,19 @@ def SolverCall(solver):
             and "0 errors" not in line
         ):
             solver["stdout_error"] = line
+    if special_timeout:
+        solver["s-status"] = "TIMEOUT"
+        solver["checked_result"] = "TIMEOUT"
+        del solver["time"]
+        # print("TIMEOUT: " + solver["solver_call"])
+        return
+    if special_memout:
+        solver["s-status"] = "MEMOUT"
+        solver["checked_result"] = "MEMOUT"
+        # print("MEMOUT: " + solver["solver_call"])
+        del solver["time"]
+        return
+
     if vline:
         solver["stdout"] = solver["stdout"].replace(
             vline, vline[: 2 + 2 * wcnfTool.vars], 1
@@ -380,9 +434,9 @@ def SolverCall(solver):
 
     solver["checked_result"] = ""
 
-    if solutionHardClauses == "UNSATISFIABLE" and solver["s-status"] == "UNSATISFIABLE":
+    if (solutionHardClauses == "UNSATISFIABLE"  or solutionHardClauses == "UNKNOWN") and solver["s-status"] == "UNSATISFIABLE":
         solver["checked_result"] = "UNSATISFIABLE"
-    elif solutionHardClauses == "SATISFIABLE" and solver["s-status"] == "OPTIMUM FOUND":
+    elif (solutionHardClauses == "SATISFIABLE" or solutionHardClauses == "UNKNOWN")  and solver["s-status"] == "OPTIMUM FOUND":
         if (
             "ver_o-value" in solver
             and "o-value" in solver
@@ -443,7 +497,7 @@ for solverName, solver in solvers.items():
         solver["id"] = 0
     else:
         solver["id"] = solverid
-    if solver.get("checked_result", "") != "TIMEOUT":
+    if solver.get("checked_result", "") != "TIMEOUT" and solver.get("checked_result", "") != "MEMOUT":
         totalTime += solver["time"]
     else:
         numberTimeouts += 1
@@ -577,6 +631,16 @@ for solverName, solver in solvers.items():
             + str(timeoutFactor)
             + " times bigger than median time of all other solvers."
         )
+    elif solver["checked_result"] == "MEMOUT":
+        solver["error_code"] = 503 + BiggerUINT32
+        solver["fault_description"] = (
+            "ISSUE (run script only): MEMOUT"
+        )
+    elif solver.get("ERROR_solver", "") == "empty":
+        solver["error_code"] = 504 + BiggerUINT32
+        solver["fault_description"] = (
+            "No output given by the solver."
+        )
     elif (
         solver.get("return_code", 0) != 0
         and solver.get("return_code", 0) != 10
@@ -588,6 +652,27 @@ for solverName, solver in solvers.items():
         solver["fault_description"] = (
             f"Invalid Return Code of MaxSAT solver == {curr_rc}"
         )
+    elif new_rules and solver.get("return_code", 0) == 30 and solver["s-status"] != "OPTIMUM FOUND":
+        solver["error_code"] = 510 + BiggerUINT32
+        solver["fault_description"] = (
+            "return value is 30 but s-status is not OPTIMUM FOUND!"
+        )
+    elif new_rules and solver.get("return_code", 0) == 20 and solver["s-status"] != "UNSATISFIABLE":
+        solver["error_code"] = 511 + BiggerUINT32
+        solver["fault_description"] = (
+            "return value is 20 but s-status is not UNSATISFIABLE!"
+        )
+    elif new_rules and solver.get("return_code", 0) == 10 and solver["s-status"] != "SATISFIABLE":
+        solver["error_code"] = 510 + BiggerUINT32
+        solver["fault_description"] = (
+            "return value is 10 but s-status is not SATISFIABLE!"
+        )
+    elif new_rules and solver.get("return_code", 0) == 0 and solver["s-status"] != "UNKNOWN":
+        solver["error_code"] = 510 + BiggerUINT32
+        solver["fault_description"] = (
+            "return value is 0 but s-status is not UNKNOWN!"
+        )
+
     elif (
         not solver["anytime"]
         and minVerifiedOValue == 2**64
@@ -597,7 +682,7 @@ for solverName, solver in solvers.items():
         solver["fault_description"] = (
             "All solver have a wrong result, as hard clauses are SATISFIABLE but no solver found a correct solution."
         )
-    elif solutionHardClauses == "SATISFIABLE" and solver["s-status"] == "UNSATISFIABLE":
+    elif (solutionHardClauses == "SATISFIABLE" and solver["s-status"] == "UNSATISFIABLE") or solver.get("checked_result", "") == "FALSE UNSAT":
         solver["error_code"] = 602 + BiggerUINT32
         solver["fault_description"] = (
             "Hard clauses are SATISFIABLE, but solver states s UNSATISFIABLE."
@@ -608,11 +693,12 @@ for solverName, solver in solvers.items():
         solver["fault_description"] = (
             "Verifier returned, that hard clauses are UNSATISFIABLE but solver states otherwise."
         )
-    elif solver.get("checked_result", "") == "FALSE UNSAT":
-        solver["error_code"] = 604 + BiggerUINT32
-        solver["fault_description"] = (
-            "s UNSATISFIABLE but the hard clauses are satisfiable."
-        )
+    ## same as 602
+    # elif solver.get("checked_result", "") == "FALSE UNSAT":
+    #     solver["error_code"] = 604 + BiggerUINT32
+    #     solver["fault_description"] = (
+    #         "s UNSATISFIABLE but the hard clauses are satisfiable."
+    #     )
     elif solver["s-status"] == "EMPTY":
         solver["error_code"] = 605 + BiggerUINT32
         solver["fault_description"] = "s status line NOT in solver output."
@@ -621,7 +707,7 @@ for solverName, solver in solvers.items():
         solver["fault_description"] = (
             "Solver status = "
             + solver["s-status"]
-            + " Unexpected result either in the status line."
+            + " Unexpected result in the status line."
         )
     elif solver.get("ver_model", "") == "MODEL ERROR":
         solver["error_code"] = 607 + BiggerUINT32
@@ -690,16 +776,16 @@ for solverName, solver in solvers.items():
     ):
         solver["error_code"] = 653 + BiggerUINT32
         solver["fault_description"] = (
-            "MaxSAT solver o value is smaller than the o-value of its model, but the o-value of it's model equals the minimal o-value.."
+            "MaxSAT solver o value is smaller than the o-value of its model, but the o-value of it's model equals the minimal o-value."
         )
-    elif (
-        solver.get("o-value", 2**64) < solver.get("ver_o-value", -1)
-        and solver.get("ver_o-value", -1) == minVerifiedOValue
-    ):
-        solver["error_code"] = 654 + BiggerUINT32
-        solver["fault_description"] = (
-            "MaxSAT solver o value is smaller than the o-value of its model, but the o-value of it's model equals the minimal o-value.."
-        )
+    # elif (
+    #     solver.get("o-value", 2**64) < solver.get("ver_o-value", -1)
+    #     and solver.get("ver_o-value", -1) == minVerifiedOValue
+    # ):
+    #     solver["error_code"] = 654 + BiggerUINT32
+    #     solver["fault_description"] = (
+    #         "MaxSAT solver o value is smaller than the o-value of its model, but the o-value of it's model equals the minimal o-value.."
+    #     )
     elif (
         not solver["anytime"]
         and solver.get("ver_o-value", -1) > minVerifiedOValue
@@ -719,7 +805,7 @@ for solverName, solver in solvers.items():
     elif solver.get("model_length", -1) != -1:
         solver["error_code"] = 701 + BiggerUINT32
         solver["fault_description"] = (
-            f"No fault but the length of the model is {solver.get('model_length', -1)} but we only have {wcnfTool.vars} variables."
+            f"No fault but the length of the model is at least 10x longer than the actual number of variables."
         )
     elif solver.get("stderr", "") != "":
         solver["error_code"] = 702 + BiggerUINT32
@@ -762,8 +848,8 @@ for solverName, solver in solvers.items():
     if solver["error_code"] != 0:
         faulty_solvers.append(solverName)
 
-while overall_return_code > 255:
-    overall_return_code = round(overall_return_code / 2 + 0.5)
+if overall_return_code != 0:
+    overall_return_code = overall_return_code % 255 + 1
 
 
 if len(logging_files) > 0:

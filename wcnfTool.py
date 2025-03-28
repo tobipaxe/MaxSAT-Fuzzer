@@ -24,7 +24,6 @@ solutionHardClauses = ""
 error_dict = {}
 issue_dict = {}
 
-
 def reset_values():
     global vars, nbHard, nbSoft, maxWeight, sumOfWeights, wcnfInputFormat, clauses, model, optimum, solution, bestSolution, bestOptimum, solutionHardClauses, error_dict, issue_dict
     vars = 0
@@ -43,12 +42,10 @@ def reset_values():
     error_dict = {}
     issue_dict = {}
 
-
 def is_valid_file(arg):
     if not os.path.exists(arg):
         print("The file %s does not exist!" % arg)
         exit(1)
-
 
 def parse_wcnf(filename):
     global sumOfWeights, clauses, wcnfInputFormat, nbHard, nbSoft, vars, maxWeight
@@ -64,7 +61,6 @@ def parse_wcnf(filename):
     with open_func(filename, "rt") as file:
         for line in file:
             line = line.strip()
-            # print(line)
 
             # Ignore comments
             if line.startswith("c") or line == "":
@@ -73,8 +69,6 @@ def parse_wcnf(filename):
             if line.startswith("p"):
                 temp_list = list(map(str, line.split()))
                 if temp_list[1] == "wcnf" and len(temp_list) == 5:
-                    # vars = int(temp_list[2])
-                    # cls = int(temp_list[3])
                     top = int(temp_list[4])
                 else:
                     print(
@@ -89,7 +83,6 @@ def parse_wcnf(filename):
             if line.startswith(hardClauseIndicator):
                 # Parse hard clause
                 clause = list(map(int, line[len(hardClauseIndicator) + 1: -2].split()))
-                # hardClauses.append(literals)
                 nbHard += 1
                 weight = -1
             elif line[0].isdigit():
@@ -106,15 +99,12 @@ def parse_wcnf(filename):
             maxVar = max(abs(lit) for lit in clause)
             if maxVar > vars:
                 vars = maxVar
-            # print(line + ": " + str(weight) + " vs " + str(clause) + ", hc: " + hardClauseIndicator)
             clauses.append((weight, clause))
     if hardClauseIndicator == "h":
         wcnfInputFormat = "new"
 
-
 def ParseSolutionMSEFormat(solver_output):
     global model, solution, optimum, error_dict, issue_dict
-    # Reset Values
     model = "v"
     solution = "s"
     optimum = -99999
@@ -122,7 +112,6 @@ def ParseSolutionMSEFormat(solver_output):
     lines = solver_output.split('\n')
     for line in lines:
         line = line.strip()
-        # print(line)
 
         # Ignore comments
         if line.startswith("c") or line == "":
@@ -184,7 +173,6 @@ def ParseSolutionMSEFormat(solver_output):
         elif model == "":
             issue_dict["No model given"] = 1
 
-
 def CheckModel(givenModel=""):
     global bestSolution, bestOptimum, error_dict, issue_dict
     global clauses
@@ -192,7 +180,6 @@ def CheckModel(givenModel=""):
         givenModel = model
 
     if len(givenModel) < vars:
-        # print("Model: " + str(model) + " nbVars: " + str(vars))
         error_dict["Model with less variables than WCNF"] = 1
         bestSolution = "MODEL ERROR"
         bestOptimum = ""
@@ -207,21 +194,15 @@ def CheckModel(givenModel=""):
         index = index + 1
         sat = False
         for lit in clause:
-            # print(str(weight) + " (" + str(int(model[abs(lit) - 1])) + " == " + str(lit > 0) + ") " + str(int(model[abs(lit) - 1]) == (lit > 0)))
             if int(givenModel[abs(lit) - 1]) == int(lit > 0):
                 sat = True
                 break
         if sat is False:
             if weight == -1:
-                # weight == -1 means hard clause
-                # hard clause is not satisfiable
-                # print("At least one HC is unsatisfiable" + str(clause) + " model: " + str(model))
                 bestSolution = "UNSATISFIABLE"
                 bestOptimum = ""
                 break
-            # this soft clause is not satisfiable
             bestOptimum += weight
-
 
 def DumpWCNF(format):
     global sumOfWeights, vars, clauses, nbHard
@@ -369,11 +350,6 @@ def DumpAsMPS(format, name="WCNF2MPS"):
         clauses.pop()
 
 
-# def CheckSolutionFile(filename):
-#     ParseSolutionMSEFormat(filename)
-#     CheckModel()
-
-
 def WriteToFile(filename, format, compress=True):
     open_func = lzma.open if compress else open
     if not filename.endswith(".xz"):
@@ -396,7 +372,7 @@ def CheckIfHardClausesSAT(satSolver, seed=None):
     filename = "/tmp/" + str(seed) + ".cnf"
     WriteToFile(filename, "cnf", False)
     solverOut = subprocess.run(
-        satSolver + " " + filename, shell=True, capture_output=True
+        satSolver + " --time=60 " + filename, shell=True, capture_output=True
     )
     os.remove(filename)
     if solverOut.returncode == 10:
@@ -406,14 +382,30 @@ def CheckIfHardClausesSAT(satSolver, seed=None):
     else:
         solutionHardClauses = "UNKNOWN"
 
+def CheckSolutionFile(filename=None):
+    if filename:
+        with open(filename, 'r') as file:
+            solver_output = file.read()
+    else:
+        solver_output = sys.stdin.read()
+    print("c Parse solver output...")
+    ParseSolutionMSEFormat(solver_output)
+    print("c Checking model...")
+    CheckModel()
+
 
 def main():
     parser = argparse.ArgumentParser(
-        description="This is a awesome MaxSAT analysation and conversion script!!"
+        description="This is an awesome MaxSAT analysis and conversion script!!"
     )
     parser.add_argument(
         "wcnfFile",
         help="WCNF file which should be converted, in relation to current path.",
+    )
+    parser.add_argument(
+        "-s",
+        "--solutionFile",
+        help="Solution file to check against the given WCNF file. If not provided, solution can be piped via stdin.",
     )
     parser.add_argument(
         "-n",
@@ -442,22 +434,41 @@ def main():
     if not args.newFilePrefix:
         args.newFilePrefix = args.wcnfFile[:-5]
 
-    # Example usage
-    # hardClauses, softClauses = parse_wcnf(args.wcnfFile)
     parse_wcnf(args.wcnfFile)
-    if "old" in args.conversionTo:
-        print("c Convert to old MSE format:")
-        WriteToFile(args.newFilePrefix + ".old.wcnf", "old", args.noCompression)
-    elif "new" in args.conversionTo:
-        print("c Convert to new MSE format:")
-        WriteToFile(args.newFilePrefix + ".new.wcnf", "new", args.noCompression)
-    elif "mps_itad" in args.conversionTo:
-        print("c Convert to MPS format, ignore tautologies and duplicates:")
-        WriteToFile(args.newFilePrefix + ".wcnf.mps", "mps_itad", args.noCompression)
-    elif "mps" in args.conversionTo:
-        print("c Convert to MPS format:")
-        WriteToFile(args.newFilePrefix + ".wcnf.mps", "mps", args.noCompression)
-
+    
+    if args.solutionFile or not sys.stdin.isatty():
+        print("c Checking output validity...")
+        CheckSolutionFile(args.solutionFile)
+        print(f"Solution Check Result: {bestSolution}, Optimum: {bestOptimum}")
+        if error_dict:
+            print("Errors:")
+            for key, value in error_dict.items():
+                print(f"  {key}")
+            exit(1)
+        if issue_dict:
+            print("Issues:")
+            for key, value in issue_dict.items():
+                print(f"  {key}")
+            exit(2)
+        if bestSolution != solution:
+            print(f"Expected s line: {solution}, but checker gives: {bestSolution}")
+            exit(3)
+        if optimum != bestOptimum:
+            print(f"Given o value: {optimum}, but model gives: {bestOptimum}")
+            exit(4)
+    else:
+        if "old" in args.conversionTo:
+            print("c Convert to old MSE format:")
+            WriteToFile(args.newFilePrefix + ".old.wcnf", "old", args.noCompression)
+        elif "new" in args.conversionTo:
+            print("c Convert to new MSE format:")
+            WriteToFile(args.newFilePrefix + ".new.wcnf", "new", args.noCompression)
+        elif "mps_itad" in args.conversionTo:
+            print("c Convert to MPS format, ignore tautologies and duplicates:")
+            WriteToFile(args.newFilePrefix + ".wcnf.mps", "mps_itad", args.noCompression)
+        elif "mps" in args.conversionTo:
+            print("c Convert to MPS format:")
+            WriteToFile(args.newFilePrefix + ".wcnf.mps", "mps", args.noCompression)
 
 if __name__ == "__main__":
     main()
