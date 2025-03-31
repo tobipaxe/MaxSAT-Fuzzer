@@ -346,7 +346,7 @@ def select_fuzzer():
     #     fuzzers[fuzzer]["stats"].active_executions += 1
     #     return fuzzer
     
-    if overall_loops < 50 * overall_number_threads and not (all(fuzzer_details["stats"].loops > 2 for key, fuzzer_details in fuzzers.items() if key != "DeltaDebugger")):
+    if overall_loops < 50 * overall_number_threads and not (all(fuzzer_details["stats"].loops > 4 for key, fuzzer_details in fuzzers.items() if key != "DeltaDebugger")):
         available_fuzzers = [key for key in fuzzers if key != "DeltaDebugger"]
         # Find the fuzzer(s) with the lowest number of active executions
         min_active_executions = min(

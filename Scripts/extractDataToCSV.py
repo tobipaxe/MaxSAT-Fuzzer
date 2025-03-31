@@ -320,8 +320,13 @@ def generate_cdf_plot(output_dir):
     fuzzer_data.sort(key=lambda x: len(x[1]), reverse=True)
     for label, times, cdf in fuzzer_data:
         plt.step(times, cdf, label=label)
-    plt.xscale('log', base=2)
-    plt.xlabel('Time (seconds, log scale base 2)')
+    # plt.xscale('log', base=2)
+    # plt.xlabel('Time (seconds, log scale base 2)')
+    # plt.xscale('log', base=10)
+    # plt.xlabel('Time (seconds, log scale base 10)')
+    plt.xscale('linear')
+    plt.xlabel('Time (seconds)')
+
     plt.ylabel('Bugs Detected')
     plt.title('CDF of first Bug Occurences Over Time per Fuzzer')
     plt.legend()
