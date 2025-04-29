@@ -7,6 +7,7 @@ from collections import defaultdict
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import hashlib
 
 def generate_general_stats(log_text, output_dir):
     """Extract and write general stats to general_stats.csv."""
@@ -293,50 +294,82 @@ def generate_fuzzer_comparison(bug_details, output_dir):
     print("\tA matrix comparing bug detection differences between fuzzers is saved in fuzzer_comparison.csv.")
 
 def generate_cdf_plot(output_dir):
-    """Create a CDF plot from the bugs_stats.csv file.
-    Always ignore overall statistics and save the plot as fuzzer_cdf_plot.png in output_dir."""
+    """Create both linear and logarithmic CDF plots from the bugs_stats.csv file.
+    Always ignore overall statistics and save the plots as fuzzer_cdf_plot_linear.png and fuzzer_cdf_plot_log.png in output_dir."""
     in_path = os.path.join(output_dir, 'bugs_stats.csv')
-    out_png = os.path.join(output_dir, 'fuzzer_cdf_plot.png')
+    out_png_linear = os.path.join(output_dir, 'fuzzer_cdf_plot_linear.png')
+    out_png_log = os.path.join(output_dir, 'fuzzer_cdf_plot_log.png')
+
+    # Predefined color mapping for fuzzers
+    FUZZER_COLORS = {
+        "VirtualBest": "blue",
+        "DeltaDebugger": "orange",
+        "PaxianPy": "green",
+        "PaxianPyTiny": "red",
+        "PaxianPySmall": "purple",
+        "Paxian": "brown",
+        "Manthey": "magenta",
+        "Pollitt": "teal",
+        "Soos": "olive"
+    }
+
     # Load CSV with two header rows
     try:
         data = pd.read_csv(in_path, delimiter=';', header=[0, 1])
     except Exception as e:
         print("Error loading", in_path, ":", e)
         return
+
     # Flatten multi-index columns
     data.columns = ['{}_{}'.format(col[0], col[1]).strip('_') for col in data.columns.values]
+
     # Extract columns related to "First Occurence" and ignore overall stats
     columns_time = [col for col in data.columns if 'First Occurence' in col and not col.startswith('Overall_')]
-    plt.figure(figsize=(10, 6))
+
     fuzzer_data = []
     for col in columns_time:
         times = pd.to_numeric(data[col], errors='coerce').dropna().sort_values()
         if times.empty:
             continue
-        cdf = np.arange(1, len(times)+1)
+        cdf = np.arange(1, len(times) + 1)
         label = col.replace('_First Occurence', '')
         fuzzer_data.append((label, times, cdf))
+
     # Sort by number of bugs (descending)
     fuzzer_data.sort(key=lambda x: len(x[1]), reverse=True)
+
+    # Generate Linear Plot
+    plt.figure(figsize=(10, 6))
     for label, times, cdf in fuzzer_data:
-        plt.step(times, cdf, label=label)
-    # plt.xscale('log', base=2)
-    # plt.xlabel('Time (seconds, log scale base 2)')
-    # plt.xscale('log', base=10)
-    # plt.xlabel('Time (seconds, log scale base 10)')
+        color = FUZZER_COLORS.get(label, None)  # Use predefined color or default
+        plt.step(times, cdf, label=label, color=color)
     plt.xscale('linear')
     plt.xlabel('Time (seconds)')
-
     plt.ylabel('Bugs Detected')
-    plt.title('CDF of first Bug Occurences Over Time per Fuzzer')
+    plt.title('CDF of First Bug Occurrences Over Time per Fuzzer (Linear Scale)')
     plt.legend()
     plt.grid(True, which="both", ls="--")
     plt.tight_layout()
-    plt.savefig(out_png)
-    plt.show()
-    print("CDF plot generated:", out_png)
-    print("\tA CDF plot showing the cumulative distribution of first bug occurrences over time per fuzzer is saved as fuzzer_cdf_plot.png.")
+    plt.savefig(out_png_linear)
+    plt.close()
+    print("Linear CDF plot generated:", out_png_linear)
 
+    # Generate Logarithmic Plot
+    plt.figure(figsize=(10, 6))
+    for label, times, cdf in fuzzer_data:
+        color = FUZZER_COLORS.get(label, None)  # Use predefined color or default
+        plt.step(times, cdf, label=label, color=color)
+    plt.xscale('log', base=2)
+    plt.xlabel('Time (seconds, log scale base 2)')
+    plt.ylabel('Bugs Detected')
+    plt.title('CDF of First Bug Occurrences Over Time per Fuzzer (Logarithmic Scale)')
+    plt.legend()
+    plt.grid(True, which="both", ls="--")
+    plt.tight_layout()
+    plt.savefig(out_png_log)
+    # plt.show()
+    plt.close()
+    print("Logarithmic CDF plot generated:", out_png_log)
 
 # === NEW FUNCTION: Generate comprehensive fuzzer summary table ===
 def generate_fuzzer_summary_table(output_dir):

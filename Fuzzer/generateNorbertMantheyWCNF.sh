@@ -5,7 +5,7 @@
 # it produces partly incorrect wcnfs in the old format -- but the original fuzzer can handle it by checking the validity of the wcnf
 
 #seed max = 4294967295 after that it is an overflow and start at 0 again
-directory=/usr/local/scratch/paxiant/MaxSATFuzzer/NorbertManthey/maxsat-fuzzer/
+directory=/usr/local/data/MaxSATFuzzer/NorbertManthey/maxsat-fuzzer/
 cd $directory
 
 if [ $# -eq 2 ]; then

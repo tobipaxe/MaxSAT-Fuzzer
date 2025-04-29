@@ -6,7 +6,7 @@
 set -e
 
 #directory=$(dirname $0)
-directory=/usr/local/scratch/paxiant/MaxSATFuzzer/MateSoos/gaussmaxhs/build/release/bin/
+directory=/usr/local/data/MaxSATFuzzer/MateSoos/gaussmaxhs/build/release/bin/
 cd $directory
 
 if [ $# -eq 2 ]; then

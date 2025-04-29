@@ -12,7 +12,7 @@ import statistics
 import resource
 import psutil
 import wcnfTool
-from configPrivate import new_rules, solvers, timeoutFactor, mempeakFactor, mem_limit_for_one_solver_call
+from configPrivateWeighted24 import new_rules, solvers, timeoutFactor, mempeakFactor, mem_limit_for_one_solver_call
 
 
 def is_valid_file(arg):
@@ -134,6 +134,8 @@ for solarg in solvers.keys():
 for solarg in toDelete:
     del solvers[solarg]
 
+active_processes = []
+
 
 # seed to add to each file created in /tmp/, try to add seed of current filename:
 seed = ""
@@ -165,7 +167,9 @@ if args.logging or args.logAll:
 
 is_valid_file(str(args.satSolver))
 
-anytime_timeout = round(random.uniform(0.1, 1.5), 4)
+# Set the random seed based on the seed defined above
+random.seed(int(str(seed)[:20]))
+anytime_timeout = round(random.uniform(0.01, 0.5), 4)
 # print(f"anytime_timeout: {anytime_timeout}")
 
 # check needed needed input formats and create needed output formats
@@ -277,6 +281,7 @@ def SolverCall(solver):
     with subprocess.Popen(
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, preexec_fn=set_memory_limit
     ) as process:
+        active_processes.append(process)
         try:
             while True:
                 elapsed_time = time.time() - solver_start_time  # Calculate elapsed time
@@ -905,10 +910,10 @@ if minVerifiedOValue == 2**64:
 else:
     minVeri = str(minVerifiedOValue)
 
-if BiggerUINT32 == 0:
-    Logging("c SumOfWeightsi: < UINT32")
-else:
+if int(wcnfTool.sumOfWeights) >= 2**32:
     Logging("c SumOfWeightsi: > UINT32")
+else:
+    Logging("c SumOfWeightsi: < UINT32")
 if anytime_solver:
     Logging("c Anytime TO...: " + str(anytime_timeout))
 Logging("c Hard clauses.: " + str(solutionHardClauses))
@@ -1017,6 +1022,7 @@ if args.logging or args.logAll:
             )
 
 Logging("c rc:" + str(overall_return_code))
+
 
 [file.close() for file in files]
 exit(overall_return_code)

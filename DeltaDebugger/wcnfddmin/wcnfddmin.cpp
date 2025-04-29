@@ -1280,12 +1280,25 @@ double ddmin() {
 
   unsigned arraySize = problemSize;
   unsigned tmpRemoved = 0;
+  dout3 << "arraySize at the beginning: " << arraySize << std::endl;
   while (arraySize >= 1) {
+    dout3 << "arraySize: " << arraySize << std::endl;
+    dout3 << "problemSize: " << problemSize << std::endl;
+    dout3 << "tmpRemoved: " << tmpRemoved << std::endl;
     RemoveInactiveParts(tmpRemoved, problemSize);
     problemSize = CalcProblemSize();
 
     unsigned nbArrays = problemSize / arraySize;
+    if (activated.size() == 0) {
+      arraySize = 0;
+      nbArrays = 0;
+
+      dout0 << "c No active parts left!" << std::endl;
+      // break;
+    }
     dout1 << "ArraySize: " << arraySize << std::endl;
+    dout1 << "ProblemSize: " << problemSize << std::endl;
+    dout1 << "Number of arrays: " << nbArrays << std::endl;
 
     for (unsigned i = 1; i <= nbArrays; i++) {
       pair = CalculateNextBorders(problemSize, arraySize, i - 1);
@@ -1308,11 +1321,11 @@ double ddmin() {
       if (!active)
         continue;
 
-      // std::cout << "activated: ";
-      // for (auto act : activated) {
-      //   std::cout << act << " ";
-      // }
-      // std::cout << std::endl;
+      std::cout << "activated: ";
+      for (auto act : activated) {
+        std::cout << act << " ";
+      }
+      std::cout << std::endl;
       if (termination_flag) {
         dout0 << "Terminate minimization loop of current mode." << std::endl;
         break;
@@ -1342,16 +1355,28 @@ double ddmin() {
       for (unsigned it = pair.first; it <= pair.second; it++)
         activated[it] = false;
 
+      std::cout << "activatedAfter: ";
+      for (auto act : activated) {
+        std::cout << act << " ";
+      }
+      std::cout << std::endl;
+
       tmpRemoved += pair.second - pair.first + 1;
+      dout3 << "tmpRemoved: " << tmpRemoved << std::endl;
+      dout3 << "pair.first: " << pair.first << std::endl;
+      dout3 << "pair.second: " << pair.second << std::endl;
     }
     arraySize = arraySize == 1 ? 0 : arraySize / 2;
+    dout3 << "arraySize halfed: " << arraySize << std::endl;
+
     // if (arraySize == 1) {
     //   arraySize = 0;
     // }
   }
 
   // here we want to remove all chunk anyway, so a
-  RemoveInactiveParts(++tmpRemoved, 1);
+  if (activated.size() > 0)
+    RemoveInactiveParts(++tmpRemoved, 1);
   problemSize = CalcProblemSize();
 
   if (currentMode == MODES::CLAUSES) {
@@ -1677,8 +1702,18 @@ int main(int argc, char **argv) {
     return 3;
   }
 
-  if (reducedWcnfName == "")
+  if (reducedWcnfName == "") // should not happen!
     reducedWcnfName = "./red_" + prefix + ".wcnf";
+
+
+  unsigned suffixCounter = 2;
+  std::string baseName = reducedWcnfName.substr(0, reducedWcnfName.find_last_of("."));
+
+  while (std::filesystem::exists(reducedWcnfName)) {
+      reducedWcnfName = baseName + "_" + std::to_string(suffixCounter) + ".wcnf";
+      dout1 << "File already exists. Renaming to: " << reducedWcnfName << std::endl;
+      suffixCounter++;
+  }
 
   try {
     std::filesystem::rename(lastTmpWCNFFileName, reducedWcnfName);
@@ -1686,10 +1721,25 @@ int main(int argc, char **argv) {
                      reducedWcnfName
               << std::endl;
   } catch (const std::filesystem::filesystem_error &e) {
-    dout0 << "ERROR: problem with moving tmp file to given reduced path: "
-          << e.what() << std::endl;
-    return 4;
-  }
+    // Handle cross-device link error by copying and deleting the original file
+    if (e.code() == std::errc::cross_device_link) {
+        try {
+            std::filesystem::copy(lastTmpWCNFFileName, reducedWcnfName);
+            std::cout << "c copied successfully " + lastTmpWCNFFileName + " to " +
+                         reducedWcnfName
+                      << std::endl;
+            std::filesystem::remove(lastTmpWCNFFileName);
+        } catch (const std::filesystem::filesystem_error &copyError) {
+            dout0 << "ERROR: problem with copying tmp file to given reduced path: "
+                  << copyError.what() << std::endl;
+            return 4;
+        }
+    } else {
+        dout0 << "ERROR: problem with moving tmp file to given reduced path: "
+              << e.what() << std::endl;
+        return 4;
+    }
+}
 
   getrusage(RUSAGE_CHILDREN, &resources);
   tmpTimeNow =

@@ -2,7 +2,7 @@
 
 timeoutFactor = 50
 mempeakFactor = 50
-new_rules = True
+new_rules = False
 # mem limit in MB
 mem_limit_for_one_solver_call = 32000
 
@@ -20,10 +20,10 @@ mem_limit_for_one_solver_call = 32000
 # YOURSOLVERNAME should be shorter than 22 symbols and only contains - letters, numbers and -;
 # DONT USE THE UNDERSCORE SYMBOL _
 # solver["YOURSOLVERNAME"] = {
-#     "solver_call" : "SOLVERCALL is the binary of the current script with the whole path toghether with arguments",
+#     "solver_call" : "SOLVERCALL is the binary of the current script with the whole path toghether with arguments ATTENTION: WITHOUT UNDERSCORE",
 #     "input_format": "wcnf" | "oldwcnf" | "mps"
 #     "type": "complete" | "anytime" | "certified"
-#     "short": "up to 6 characters to identify the solver. Has to be unique and without underscore!"
+#     "short": "up to 6 characters to identify the solver. Has to be unique and ATTENTION: WITHOUT UNDERSCORE!"
 #     "upper_bound": 1000000 This is a non mandatory parameter with an upper bound for the sum of weights.
 
 # Attention MIP solver have all their own output format. You have to transform that to the new MSE format first
@@ -35,11 +35,17 @@ solvers = {
         "type": "complete",
         "short": "EMS",
     },
-    "Pac-PC-DPW-Release": {
-        "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/CertifiedSolver/certified-pacose.sh",
+    # "Pac-PC-DPW-Release": {
+    #     "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/CertifiedSolver/certified-pacose.sh",
+    #     "input_format": "wcnf",
+    #     "type": "certified",
+    #     "short": "PPCDPW",
+    # },
+    "MaxHSCadical": {
+        "solver_call": "/usr/local/scratch/paxiant/gitlab/MaxHSCadical/MaxHS/code/build/release/bin/maxhs -printSoln",
         "input_format": "wcnf",
-        "type": "certified",
-        "short": "PPCDPW",
+        "type": "complete",
+        "short": "MHC",
     },
 
     # "sat4j": {
@@ -90,7 +96,7 @@ delta_debugger = "DeltaDebugger/wcnfddmin/wcnfddmin "
 #                       is added after an empty space.
 #       max_seed         upper bound for a seed of this fuzzer
 fuzzers = {
-    # "Paxian": {"command": "Fuzzer/wcnfuzz/wcnfuzz --wcnf", "upper_bound": "-u"},
+    "Paxian": {"command": "Fuzzer/wcnfuzz/wcnfuzz --wcnf", "upper_bound": "-u"},
     # "PaxianPy": {
     #     "command": "Fuzzer/wcnfuzz.py",
     #     "upper_bound": "--upperBound",
@@ -106,32 +112,34 @@ fuzzers = {
         "upper_bound": "--upperBound",
         "seed": "--seed",
     },
-    # "PaxianPyGBMO": {
-    #     "command": "Fuzzer/wcnfuzz.py --gbmo",
-    #     "upper_bound": "--upperBound",
-    #     "seed": "--seed",
-    # },
+    "PaxianPyGBMO": {
+        "command": "Fuzzer/wcnfuzz.py --gbmo",
+        "upper_bound": "--upperBound",
+        "seed": "--seed",
+    },
     # "PaxianPySmallGBMO": {
     #     "command": "Fuzzer/wcnfuzz.py --small --gbmo",
     #     "upper_bound": "--upperBound",
     #     "seed": "--seed",
     # },
-    "PaxianPyTinyGBMO": {
-        "command": "Fuzzer/wcnfuzz.py --tiny --gbmo",
-        "upper_bound": "--upperBound",
-        "seed": "--seed",
-    },
-    # "Pollitt": {
-    #     "command": "Fuzzer/generateFlorianPollitWCNF.sh",
-    #     "max_seed": 10**20,
-    #     "min_seed": 10**19,
+    # "PaxianPyTinyGBMO": {
+    #     "command": "Fuzzer/wcnfuzz.py --tiny --gbmo",
+    #     "upper_bound": "--upperBound",
+    #     "seed": "--seed",
     # },
+    "Pollitt": {
+        "command": "Fuzzer/generateFlorianPollitWCNF.sh",
+        "max_seed": 10**20,
+        "min_seed": 10**19,
+    },
     # The following two fuzzers have to be downloaded and are not part of the project!
     # But I've included the necessary scripts to reproduce the results anyhow!
-    # "Manthey": {
-    #     "command": "Fuzzer/generateNorbertMantheyWCNF.sh",
-    #     "compare_extra": "--reWriteAllWCNFs",
-    # },
-    # "Soos": {"command": "Fuzzer/generateMateSoosWCNF.sh"},
+    "Manthey": {
+        "command": "Fuzzer/generateNorbertMantheyWCNF.sh",
+        "compare_extra": "--reWriteAllWCNFs",
+    },
+    "Soos": {
+        "command": "Fuzzer/generateMateSoosWCNF.sh"
+        },
 }
 

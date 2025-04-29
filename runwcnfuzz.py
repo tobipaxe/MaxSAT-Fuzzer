@@ -9,14 +9,14 @@ import shutil
 import sys
 import argparse
 import re
-import math
+import math  # Provides mathematical functions like ceil
 from datetime import date
 import glob
 import csv
 import statistics
 import typing
 import psutil
-from configPrivate import (
+from configPrivateWeighted24 import (
     fuzzers,
     wcnf_compare_script,
     delta_debugger_compare_script,
@@ -176,7 +176,7 @@ def cleanup():
     # print(error_tracker.unsuccessfully_reduced)
 
     print("Cleaning up, this may take a while.")
-    thread_timeout = 5
+    thread_timeout = overall_number_threads if overall_number_threads > timeout else timeout
 
     print(f"Terminating all subprocesses.")
     if any(t.is_alive() for t in threads):
@@ -196,6 +196,8 @@ def cleanup():
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 # Handle processes that no longer exist or are inaccessible
                 pass
+            except Exception as e:
+                print(f"Unexpected error while processing {proc.info['pid']}: {e}")
 
     # Wait for threads with a timeout
     start_time = time.time()
@@ -238,6 +240,7 @@ def cleanup():
     print("All threads terminated -- process cleanup done.")
 
     combine_log_files(lg_path)
+    combine_log_files_with_substring(wcnfddmin_lg_path, "_", -1, -1)
     combine_log_files(wcnfddmin_lg_path)
     print("Log files combined.")
 
@@ -247,6 +250,15 @@ def cleanup():
         print_status()
         sys.stdout = original_stdout
     print("Overview log file written.")
+
+    with open(location + "OtherErrors.log", "w") as file:
+        sys.stdout = file  # Change the standard output to the file we created.
+        print(f"{RED}Exception Errors:{RESET}")
+        for error in exception_errors:
+            print(f"{RED}Fuzzer: {error['fuzzer']}, Seed: {error['seed']}, Error: {error['error']}{RESET}")
+        sys.stdout = original_stdout
+    print("Other errors log file written.")
+
     if not os.listdir(lg_path):
         os.rmdir(lg_path)
     else:
@@ -284,6 +296,8 @@ def cleanup():
                 os.remove(file)
             except FileNotFoundError:
                 print("File not found.")
+            except Exception as e:
+                print(f"Unexpected error while deleting {file}: {e}")
     # Remove all /tmp/*.cnf files (from the check if hard clauses are sat)
     cnf_files = glob.glob("/tmp/*.cnf")
     for file in cnf_files:
@@ -292,6 +306,8 @@ def cleanup():
                 os.remove(file)
             except FileNotFoundError:
                 print("File not found.")
+            except Exception as e:
+                print(f"Unexpected error while deleting {file}: {e}")
     # Remove all /tmp/*.pbp files
     # Created with certified solver scripts
     pbp_files = glob.glob("/tmp/*.pbp")
@@ -301,6 +317,8 @@ def cleanup():
                 os.remove(file)
             except FileNotFoundError:
                 print("File not found.")
+            except Exception as e:
+                print(f"Unexpected error while deleting {file}: {e}")
     # Remove all /tmp/*.pblog files
     # Created with certified solver scripts
     pblog_files = glob.glob("/tmp/*.pblog")
@@ -310,6 +328,8 @@ def cleanup():
                 os.remove(file)
             except FileNotFoundError:
                 print("File not found.")
+            except Exception as e:
+                print(f"Unexpected error while deleting {file}: {e}")
     print("/tmp/ cleaned up.")
     print("Done.\n")
 
@@ -443,6 +463,7 @@ class ErrorTrackingSystem:
 
         # Track delta debugger counts per solver/error_code combination
         self.active_debuggers = {}  # Nested: solver -> error_code -> count
+        self.ddmin_counters = {}  # Nested: solver -> error_code -> ddmin_counter
         self.successfully_reduced = {}  # Nested: solver -> error_code -> count
         self.unsuccessfully_reduced = {}  # Nested: solver -> error_code -> count
 
@@ -494,6 +515,17 @@ class ErrorTrackingSystem:
             self.error_occurrences[solver][error_code].append(
                 (wcnf_instance, execution_time)
             )
+            # if fuzzer == "DeltaDebugger":
+            #     if solver not in self.ddmin_counters:
+            #         self.ddmin_counters[solver] = {}
+            #     if error_code not in self.ddmin_counters[solver]:
+            #         self.ddmin_counters[solver][error_code] = 0
+            # if fuzzer != "DeltaDebugger" or self.ddmin_counters[solver][error_code] <= math.ceil(minimize / 2):
+            #     self.error_occurrences[solver][error_code].append(
+            #         (wcnf_instance, execution_time)
+            #     )
+            #     if fuzzer == "DeltaDebugger":
+            #         self.ddmin_counters[solver][error_code] += 1
             #print("self.error_occurrences: ", self.error_occurrences)
 
         # Initialize debugger counters if necessary
@@ -1146,7 +1178,23 @@ def find_and_sort_files(directory, substring):
     # Sort files by their size (smallest first)
     # sorted_files = sorted(files_with_substring, key=os.path.getsize)
     # Sort files by their age, (newest first)
-    sorted_files = sorted(files_with_substring, key=os.path.getctime, reverse=True)
+    # Retry sorting until no exceptions occur
+    while True:
+        try:
+            # Sort files by their creation time (newest first)
+            sorted_files = sorted(
+                files_with_substring, key=os.path.getctime, reverse=True
+            )
+            break  # Exit the loop if sorting succeeds
+        except Exception as e:
+            print(f"Warning: An error occurred during sorting: {e}")
+            # Remove problematic files from the list and retry
+            files_with_substring = [
+                f for f in files_with_substring if os.path.exists(f)
+            ]
+            if not files_with_substring:
+                print("No files left to sort after handling errors.")
+                return []
 
     # for file in sorted_files:
     #     creation_time = os.path.getctime(file)
@@ -1166,12 +1214,13 @@ def combine_log_files_with_substring(directory, substring, solver, fault_code):
     global files_error_free, files_processed
     sorted_files = find_and_sort_files(directory, substring)
     # print(sorted_files)
-    solver_long_name = find_solver_by_short_name(solver)
-
+    
     # Dictionary to track first occurrences of solver_name and return_code combinations
     first_occurrences = {}
-    combination_key = (solver_long_name, fault_code)
-    first_occurrences[combination_key] = True
+    if fault_code != -1:
+        solver_long_name = find_solver_by_short_name(solver)
+        combination_key = (solver_long_name, fault_code)
+        first_occurrences[combination_key] = True
     # print(f"combination_key: {combination_key}")
     # print(f"first_occurrences: {first_occurrences}")
 
@@ -1189,14 +1238,24 @@ def combine_log_files_with_substring(directory, substring, solver, fault_code):
         # print(content)
 
         parts = os.path.basename(file).split("_")
+
+        if len(parts) < 2:
+            print(f"Warning: Unexpected filename format: {file}")
+            continue
+    
         solver_name = parts[0]
-        return_code = parts[1].split(".")[0]
+
+        try:
+            return_code = int(parts[1].split(".")[0])
+        except ValueError:
+            print(f"Warning: Invalid return code in filename: {file}")
+            continue
         # print(f"solver name: {solver_name}, return code: {return_code}")
 
         # Determine if this is the first occurrence of the solver_name and return_code combination
         # only then activate the delta debugger for that combination.
         # This will be probably the smallest file for that occurence (as it occured latest in the logs)
-        combination_key = (solver_name, int(return_code))
+        combination_key = (solver_name, return_code)
         do_minimization = combination_key not in first_occurrences
         # print(f"combination_key: {combination_key}")
         # print(f"first_occurrences: {first_occurrences}")
@@ -1221,7 +1280,10 @@ def combine_log_files_with_substring(directory, substring, solver, fault_code):
                 target_file.write("\n".join(content) + "\n\n")
 
             if os.path.exists(file):
-                os.remove(file)
+                try:
+                    os.remove(file)
+                except Exception as e:
+                    print(f"Error removing file {file}: {e}")
 
         files_processed += 1
 
@@ -1493,6 +1555,74 @@ def run_program():
         terminate_flag = True
 
 
+# For terminating solvers which run too long (This is a problem only detected so far in anytime solvers!)
+SOLVER_META = {
+    info["solver_call"]: info
+    for info in solvers.values()
+}
+
+
+# For terminating solvers which run too long (This is a problem only detected so far in anytime solvers!)
+# multipliers per solver type (ignored for "anytime")
+TYPE_FACTORS = {
+    "certified": 6.0,
+    "complete": 2.0,
+}
+
+
+# For terminating solvers which run too long (This is a problem only detected so far in anytime solvers!)
+def get_time_limit_for(exe_path: str, base_timeout: float) -> float:
+    """
+    Returns:
+      - 5.0               if solver type == "anytime"
+      - 6 * base_timeout  if type == "certified"
+      - 2 * base_timeout  if type == "complete"
+      - base_timeout      otherwise
+    """
+    meta = SOLVER_META.get(exe_path, {})
+    t = meta.get("type", "")
+    if t == "anytime":
+        return 5.0
+    if t in TYPE_FACTORS:
+        return base_timeout * TYPE_FACTORS[t]
+    return base_timeout
+
+
+# For terminating solvers which run too long (This is a problem only detected so far in anytime solvers!)
+def scan_and_kill(base_timeout: float):
+    now = time.time()
+    for proc in psutil.process_iter(['pid', 'cmdline', 'create_time']):
+        cmdline = proc.info.get('cmdline') or []
+        if not cmdline:
+            continue
+
+        exe = cmdline[0]
+        if exe not in SOLVER_META:
+            continue
+
+        # compute per-process threshold
+        limit = get_time_limit_for(exe, base_timeout)
+        age = now - proc.info['create_time']
+        if age <= limit:
+            continue
+
+        print(f"[{time.strftime('%H:%M:%S')}] "
+              f"Killing {exe} (pid={proc.pid}) age={age:.1f}s > {limit:.1f}s")
+        
+        try:
+            proc.terminate()       # SIGTERM
+            exception_errors.append({"fuzzer": "KillSolver", "seed": "SIGTERM", "error": f"Killing {exe} (pid={proc.pid}) age={age:.1f}s > {limit:.1f}s"})
+            proc.wait(timeout=2)
+        except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+            try:
+                proc.kill()        # SIGKILL
+                exception_errors.append({"fuzzer": "KillSolver", "seed": "SIGKILL", "error": f"Killing {exe} (pid={proc.pid}) age={age:.1f}s > {limit:.1f}s"})
+            except psutil.NoSuchProcess:
+                pass
+        except psutil.AccessDenied:
+            print(f"  → Access denied killing pid {proc.pid}")
+
+
 def print_status(last_run=False):
     if terminate_flag:
         RED = GREEN = YELLOW = BLUE = RESET = ""
@@ -1627,10 +1757,6 @@ def print_status(last_run=False):
             for code, description in sorted(error_tracker.error_descriptions.items()):
                 print(f"{RED}Error {code}: {description}{RESET}")
             print(f"{YELLOW}================================={RESET}")
-            if terminate_flag and exception_errors:
-                print(f"{RED}Exception Errors:{RESET}")
-                for error in exception_errors:
-                    print(f"{RED}Fuzzer: {error['fuzzer']}, Seed: {error['seed']}, Error: {error['error']}{RESET}")
         
         if (last_run):
             return
@@ -1645,12 +1771,15 @@ def print_status(last_run=False):
             time_to_sleep = int(math.log10(int(overall_loops)))
 
         combine_log_files(lg_path)
-        combine_log_files(wcnfddmin_lg_path)
+        #combine_log_files(wcnfddmin_lg_path)
 
         cnt = 0
         while (not terminate_flag) and cnt < 50:
             time.sleep(time_to_sleep / 50)
             cnt += 1
+
+        # For terminating solvers which run too long (This is a problem only detected so far in anytime solvers!)
+        scan_and_kill(timeout)
 
         if terminate_flag:
             break
