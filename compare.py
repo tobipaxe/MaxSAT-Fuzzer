@@ -12,7 +12,7 @@ import statistics
 import resource
 import psutil
 import wcnfTool
-from configPrivateWeighted24 import new_rules, solvers, timeoutFactor, mempeakFactor, mem_limit_for_one_solver_call
+from config import new_rules, solvers, timeoutFactor, mempeakFactor, mem_limit_for_one_solver_call
 
 
 def is_valid_file(arg):
@@ -139,18 +139,15 @@ active_processes = []
 
 # seed to add to each file created in /tmp/, try to add seed of current filename:
 seed = ""
-if seed == "" and any(
-    char.isdigit() for char in os.path.splitext(os.path.basename(args.wcnfFile))[0]
-):
-    seed = str(
-        int(
-            "".join(
-                filter(
-                    str.isdigit, os.path.splitext(os.path.basename(args.wcnfFile))[0]
-                )
-            )
-        )
-    )
+
+filename = os.path.splitext(os.path.basename(args.wcnfFile))[0]
+if "red-ddmin" in filename:
+    # Extract digits after "red-ddmin"
+    red_ddmin_index = filename.find("red-ddmin") + len("red-ddmin")
+    seed = "".join(filter(str.isdigit, filename[red_ddmin_index:]))
+elif any(char.isdigit() for char in filename):
+    seed = str(int("".join(filter(str.isdigit, filename))))
+
 if seed == "" or len(seed) < 20:
     seed += str(random.randrange(1, 2**32 - 1))
 
@@ -668,12 +665,12 @@ for solverName, solver in solvers.items():
             "return value is 20 but s-status is not UNSATISFIABLE!"
         )
     elif new_rules and solver.get("return_code", 0) == 10 and solver["s-status"] != "SATISFIABLE":
-        solver["error_code"] = 510 + BiggerUINT32
+        solver["error_code"] = 512 + BiggerUINT32
         solver["fault_description"] = (
             "return value is 10 but s-status is not SATISFIABLE!"
         )
     elif new_rules and solver.get("return_code", 0) == 0 and solver["s-status"] != "UNKNOWN":
-        solver["error_code"] = 510 + BiggerUINT32
+        solver["error_code"] = 513 + BiggerUINT32
         solver["fault_description"] = (
             "return value is 0 but s-status is not UNKNOWN!"
         )

@@ -1,14 +1,49 @@
 #!/usr/bin/env python3
 import re
 import csv
-import sys
 import os
 from collections import defaultdict
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-import hashlib
+import argparse
 
+# 40	to	1.6	Invalid Return Code of MaxSAT solver == 40
+# 50	to	1.6	Invalid Return Code of MaxSAT solver == 50
+# 134	to	1.1	Invalid Return Code of MaxSAT solver == 134
+# 135	to	1.2	Invalid Return Code of MaxSAT solver == 135
+# 136	to	1.3	Invalid Return Code of MaxSAT solver == 136
+## 137    to	1.4	Invalid Return Code of MaxSAT solver == 137 -- did not occur
+# 139	to	1.5	Invalid Return Code of MaxSAT solver == 139
+# 501	to	3.2	POTENTIAL ERROR: TIMEOUT and MEMPEAK  Timeout and Memory peak (740748) is 100 times bigger than the median memory peak.
+# 502	to	3.1	POTENTIAL ERROR: TIMEOUT is 100 times bigger than median time of all other solvers.
+# 511	to	4.6	return value is 20 but s-status is not UNSATISFIABLE!
+# 602	to	2.5	Hard clauses are SATISFIABLE, but solver states s UNSATISFIABLE.
+# 603	to	2.4	Verifier returned, that hard clauses are UNSATISFIABLE but solver states otherwise.
+# 605	to	4.1	s status line NOT in solver output.
+# 607	to	2.6	Verifier returned, that given model is too small.
+# 608	to	2.6	Verifier returned that given model is UNSATISAFIABLE.
+# 609	to	4.1	s string in o-value (example): o 0c All SoftClauses are Satisfiable!
+# 611	to	4.1	s OPTIMUM FOUND - but no o value given
+# 613	to	2.3	The given o value is negative, probably because of an overflow.
+# 650	to	2.2	MaxSAT solver o-values given by solver, model and the minimal o value are three different values.
+# 651	to	2.3	MaxSAT o-value equals minimal o-value BUT given model has a bigger o-value.
+# 652	to	2.3	MaxSAT solver o value is bigger than the o-value of its model which equals the minimal o-value.
+# 653	to	2.3	MaxSAT solver o value is smaller than the o-value of its model, but the o-value of it's model equals the minimal o-value.
+# 655	to	2.1	o-value of MaxSAT solver model equals o value of the solver but it is bigger than the minimal o-value.
+# 656	to	2.3	The o-values are otherwise inconsistent.
+# 701	to	4.2	No fault but the length of the model is at least 10x longer than the actual number of variables.
+# 702	to	4.3	MaxSAT solver returned something in stderr.
+# 703	to	4.3	MaxSAT solver had ERROR written in some form in stdout
+
+# --- Embedded error-to-fault mapping ---
+ERROR_MAP = {
+    40: "1.6", 50: "1.6", 134: "1.1", 135: "1.2", 136: "1.3", 139: "1.5", 137: "1.4",
+    501: "3.2", 502: "3.1", 511: "4.6", 602: "2.5", 603: "2.4",
+    605: "4.1", 607: "2.6", 608: "2.6", 609: "4.1", 611: "4.1",
+    613: "2.3", 650: "2.2", 651: "2.3", 652: "2.3", 653: "2.3",
+    655: "2.1", 656: "2.3", 701: "4.2", 702: "4.3", 703: "4.3",
+}
 
 def generate_general_stats(log_text, output_dir):
     """Extract and write general stats to general_stats.csv."""
@@ -58,52 +93,94 @@ def generate_general_stats(log_text, output_dir):
     print("\tGeneral statistics (e.g. execution times, thread count) are saved in general_stats.csv.")
     return all_data, stats_matches
 
-def generate_bug_stats(log_text, stats_matches, output_dir):
-    """Extract bug details and write bugs_stats.csv."""
+def generate_bug_stats(log_text, stats_matches, output_dir, apply_map=False):
+    """Extract bug details and write bugs_stats(.csv), applying mapping if requested."""
     bugs_pattern = re.compile(r"Solver\(Bug\):Count/1\.Time\s+:\s*(.+)")
     unique_bugs_pattern = re.compile(r"Unique Solver\(Bug\):Count/1T:\s*(.+)")
-    bug_descriptions_pattern = re.compile(r"==== Bug Descriptions =============================\n(.+?)(?=\n={3,}|\Z)", re.DOTALL)
-    
+    bug_descriptions_pattern = re.compile(
+        r"==== Bug Descriptions =============================\n(.+?)(?=\n={3,}|\Z)",
+        re.DOTALL
+    )
     bug_details = {}
     has_unique = {}
+
+    # Parse each stats block
     for name, content in stats_matches:
         bug_details[name] = []
         unique_bugs = set()
         has_unique[name] = False
-        if unique_match := unique_bugs_pattern.search(content):
+        # Unique bugs block
+        if ubm := unique_bugs_pattern.search(content):
             has_unique[name] = True
-            for ub in unique_match.group(1).split(","):
+            for ub in ubm.group(1).split(','):
                 try:
-                    solver_bug, count_time = ub.strip().split(":")
+                    solver_bug, count_time = ub.strip().split(':')
                     solver, bug = re.match(r"(\w+)\((\d+)\)", solver_bug.strip()).groups()
                     count, first_time = count_time.split('/')
+                    # Determine mapped bug for consistency
+                    mapped = ERROR_MAP.get(int(bug), bug) if apply_map else bug
                     bug_details[name].append({
                         'Solver': solver,
-                        'Bug': bug,
+                        'Bug': mapped,
                         'Count': count,
                         'First Occurence': first_time,
                         'Unique': 'yes'
                     })
-                    unique_bugs.add((solver, bug))
+                    unique_bugs.add((solver, mapped))
                 except Exception:
                     continue
-        if bug_match := bugs_pattern.search(content):
-            for entry in bug_match.group(1).split(","):
+        # All bugs block
+        if bm := bugs_pattern.search(content):
+            for entry in bm.group(1).split(','):
                 try:
-                    solver_bug, count_time = entry.strip().split(":")
+                    solver_bug, count_time = entry.strip().split(':')
                     solver, bug = re.match(r"(\w+)\((\d+)\)", solver_bug.strip()).groups()
-                    if (solver, bug) not in unique_bugs:
-                        count, first_time = count_time.split('/')
-                        unique_mark = 'no' if has_unique[name] else ''
-                        bug_details[name].append({
-                            'Solver': solver,
-                            'Bug': bug,
-                            'Count': count,
-                            'First Occurence': first_time,
-                            'Unique': unique_mark
-                        })
+                    # Determine mapped bug consistently
+                    mapped = ERROR_MAP.get(int(bug), bug) if apply_map else bug
+                    # Skip if this solver/bug combo was already marked unique
+                    if (solver, mapped) in unique_bugs:
+                        continue
+                    count, first_time = count_time.split('/')
+                    unique_mark = 'no' if has_unique[name] else ''
+                    bug_details[name].append({
+                        'Solver': solver,
+                        'Bug': mapped,
+                        'Count': count,
+                        'First Occurence': first_time,
+                        'Unique': unique_mark
+                    })
                 except Exception:
                     continue
+
+    # Aggregate duplicates when mapping is active
+    if apply_map:
+        for name_key, entries in bug_details.items():
+            agg = {}
+            for e in entries:
+                key = (e['Solver'], e['Bug'])
+                cnt = int(e['Count']) if e['Count'] else 0
+                ft = float(e['First Occurence']) if e['First Occurence'] else float('inf')
+                uq = (e['Unique'].lower() == 'yes')
+                if key not in agg:
+                    agg[key] = {'Count': cnt, 'First Occurence': ft, 'Unique': uq}
+                else:
+                    agg[key]['Count'] += cnt
+                    if ft < agg[key]['First Occurence']:
+                        agg[key]['First Occurence'] = ft
+                    agg[key]['Unique'] = agg[key]['Unique'] and uq
+            # rebuild entries
+            new_list = []
+            for (sol, bg), vals in agg.items():
+                new_list.append({
+                    'Solver': sol,
+                    'Bug': bg,
+                    'Count': str(vals['Count']),
+                    'First Occurence': str(vals['First Occurence']),
+                    'Unique': 'yes' if vals['Unique'] else 'no'
+                })
+            bug_details[name_key] = new_list
+
+    # Compute virtual best occurrences
     virtual_best = {}
     for name, bugs in bug_details.items():
         if name == 'Overall':
@@ -116,6 +193,7 @@ def generate_bug_stats(log_text, stats_matches, output_dir):
                     virtual_best[key] = t
             except Exception:
                 continue
+    # Add VirtualBest row set
     bug_details['VirtualBest'] = []
     for (solver, bug), first_time in sorted(virtual_best.items()):
         bug_details['VirtualBest'].append({
@@ -126,44 +204,53 @@ def generate_bug_stats(log_text, stats_matches, output_dir):
             'Unique': ''
         })
     has_unique['VirtualBest'] = False
-    out_path = os.path.join(output_dir, 'bugs_stats.csv')
+
+    # Determine output filename with mapping suffix
+    suffix = '_mapped' if apply_map else ''
+    out_path = os.path.join(output_dir, f'bugs_stats{suffix}.csv')
+    # Write CSV with multi-row header
     with open(out_path, 'w', newline='') as file:
         writer = csv.writer(file, delimiter=';')
-        headers, subheaders, columns_count = [], [], {}
+        headers = []
+        subheaders = []
+        columns_count = {}
         for name in bug_details:
             if has_unique.get(name, False):
                 columns_count[name] = 5
-                headers.extend([name]*5)
+                headers.extend([name] * 5)
                 subheaders.extend(['Solver', 'Bug', 'Count', 'First Occurence', 'Unique'])
             else:
                 columns_count[name] = 4
-                headers.extend([name]*4)
+                headers.extend([name] * 4)
                 subheaders.extend(['Solver', 'Bug', 'Count', 'First Occurence'])
         writer.writerow(headers)
         writer.writerow(subheaders)
-        max_len = max(len(bug_details[n]) for n in bug_details)
-        for i in range(max_len):
+
+        max_rows = max(len(bug_details[n]) for n in bug_details)
+        for i in range(max_rows):
             row = []
             for name in bug_details:
                 cols = columns_count[name]
                 if i < len(bug_details[name]):
-                    bug = bug_details[name][i]
-                    row.extend([bug['Solver'], bug['Bug'], bug['Count'], bug['First Occurence']])
+                    entry = bug_details[name][i]
+                    cells = [entry['Solver'], entry['Bug'], entry['Count'], entry['First Occurence']]
                     if cols == 5:
-                        row.append(bug['Unique'])
+                        cells.append(entry['Unique'])
                 else:
-                    row.extend(['']*cols)
+                    cells = [''] * cols
+                row.extend(cells)
             writer.writerow(row)
-        bug_descriptions_match = bug_descriptions_pattern.search(log_text)
-        if bug_descriptions_match:
-            bug_descriptions = bug_descriptions_match.group(1).strip().split('\n')
+
+        # Append bug descriptions if present
+        if bdm := bug_descriptions_pattern.search(log_text):
             writer.writerow([])
             writer.writerow(['Bug Descriptions'])
-            for description in bug_descriptions:
-                if m := re.match(r"Error (\d+): (.+)", description):
+            for line in bdm.group(1).strip().split('\n'):
+                if m := re.match(r"Error (\d+): (.+)", line):
                     writer.writerow([m.group(1), m.group(2)])
+
     print("CSV file generated:", out_path)
-    print("\tDetailed bug statistics with solver, bug counts, and first occurrence times are saved in bugs_stats.csv.")
+    print(f"\tDetailed bug statistics saved in bugs_stats{suffix}.csv.")
     return bug_details, virtual_best
 
 def generate_fuzzer_stats(log_text, output_dir):
@@ -236,7 +323,7 @@ def generate_fuzzer_stats(log_text, output_dir):
 
     
     
-def generate_bug_first_occurrence(bug_details, virtual_best, output_dir):
+def generate_bug_first_occurrence(bug_details, virtual_best, output_dir, apply_map=False):
     """Collect bug first occurrence times per solver/bug and write bug_first_occurrence.csv."""
     all_solver_bug = set()
     fuzzer_times = defaultdict(dict)
@@ -248,11 +335,12 @@ def generate_bug_first_occurrence(bug_details, virtual_best, output_dir):
             fuzzer_times[solver_bug][fuzzer_name] = bug['First Occurence']
     for solver_bug, time in virtual_best.items():
         fuzzer_times[solver_bug]['VirtualBest'] = str(time)
-    sorted_solver_bug = sorted(all_solver_bug, key=lambda x: (x[0], int(x[1])))
+    sorted_solver_bug = sorted(all_solver_bug, key=lambda x: (x[0], x[1]))
     fuzzer_names = sorted([name for name in bug_details.keys() if name not in ('Overall', 'VirtualBest')])
     fuzzer_names = ['VirtualBest'] + fuzzer_names
-    
-    out_path = os.path.join(output_dir, 'bug_first_occurrence.csv')
+    # Determine output filename with mapping suffix
+    suffix = '_mapped' if apply_map else ''
+    out_path = os.path.join(output_dir, f'bug_first_occurrence{suffix}.csv')
     with open(out_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile, delimiter=';')
         header = ['Solver', 'Bug'] + fuzzer_names
@@ -263,7 +351,7 @@ def generate_bug_first_occurrence(bug_details, virtual_best, output_dir):
                 row.append(fuzzer_times.get((solver, bug), {}).get(fuzzer, ''))
             writer.writerow(row)
     print("CSV file generated:", out_path)
-    print("\tAggregated bug first occurrence times by solver and fuzzer are saved in bug_first_occurrence.csv.")
+    print(f"\tAggregated bug first occurrence times by solver and fuzzer are saved in bug_first_occurrence{suffix}.csv")
 
 def generate_fuzzer_comparison(bug_details, output_dir):
     """Build a comparison matrix between fuzzers and write fuzzer_comparison.csv."""
@@ -501,12 +589,33 @@ def extract_data(log_text, output_dir):
     generate_cdf_plot(output_dir)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Usage: python script.py <input_log_file>")
-        sys.exit(1)
-    log_file_path = sys.argv[1]
+    parser = argparse.ArgumentParser(
+        description='Extract data from a log file and optionally map error codes to fault numbers.'
+    )
+    parser.add_argument(
+        'input_log_file',
+        help='Path to the input log file'
+    )
+    parser.add_argument(
+        '--mapping',
+        dest='apply_map',
+        action='store_true',
+        help='Apply embedded error-to-fault mapping when generating bug stats'
+    )
+    args = parser.parse_args()
+
+    log_file_path = args.input_log_file
     output_dir = os.path.dirname(os.path.abspath(log_file_path))
     with open(log_file_path, 'r') as f:
         log_text = f.read()
-    extract_data(log_text, output_dir)
-    print("CSV files and plot generated in:", output_dir)
+
+    all_data, stats_matches = generate_general_stats(log_text, output_dir)
+    bug_details, virtual_best = generate_bug_stats(
+        log_text, stats_matches, output_dir, apply_map=args.apply_map
+    )
+    generate_fuzzer_stats(log_text, output_dir)
+    generate_bug_first_occurrence(bug_details, virtual_best, output_dir, apply_map=args.apply_map)
+    generate_fuzzer_comparison(bug_details, output_dir)
+    generate_fuzzer_summary_table(output_dir)
+    generate_cdf_plot(output_dir)
+    print(f"CSV files and plots generated in: {output_dir}")

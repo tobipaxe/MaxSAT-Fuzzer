@@ -41,12 +41,38 @@ solvers = {
     #     "type": "certified",
     #     "short": "PPCDPW",
     # },
-    "MaxHSCadical": {
-        "solver_call": "/usr/local/scratch/paxiant/gitlab/MaxHSCadical/MaxHS/code/build/release/bin/maxhs -printSoln",
+    # "MaxHSCadical": {
+    #     "solver_call": "/usr/local/scratch/paxiant/gitlab/MaxHSCadical/MaxHS/code/build/release/bin/maxhs -printSoln",
+    #     "input_format": "wcnf",
+    #     "type": "complete",
+    #     "short": "MHC",
+    # },
+
+    "MaxHSSCIP": {
+        "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/MaxHSBinaries/maxhsScip -printSoln",
         "input_format": "wcnf",
         "type": "complete",
-        "short": "MHC",
+        "short": "MHSS",
     },
+    # "MaxHSSCIPExact": {
+    #     "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/MaxHSBinaries/maxhsScipExact -printSoln",
+    #     "input_format": "wcnf",
+    #     "type": "complete",
+    #     "short": "MHSSE",
+    # },
+    "MaxHSCPLEX": {
+        "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/MaxHSBinaries/maxhsCplexNew -printSoln",
+        "input_format": "wcnf",
+        "type": "complete",
+        "short": "MHSC",
+    },
+    "MaxHSCPLEXOld": {
+        "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/MaxHSBinaries/maxhsCplexOld -printSoln",
+        "input_format": "wcnf",
+        "type": "complete",
+        "short": "MHSCO",
+    },
+
 
     # "sat4j": {
     #     "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/Others/sat4j.sh",

@@ -16,7 +16,7 @@ import csv
 import statistics
 import typing
 import psutil
-from configPrivateWeighted24 import (
+from config import (
     fuzzers,
     wcnf_compare_script,
     delta_debugger_compare_script,
