@@ -131,9 +131,17 @@ def combine_log_files(origin_path):
             continue
 
         # Read the entire content of the file and extract the last line
-        with open(source_file_path, "r") as file_to_read:
-            content = file_to_read.read().strip().splitlines()
-            last_line = content[-1] if content else ""
+        try:
+            with open(source_file_path, "r") as file_to_read:
+                content = file_to_read.read().strip().splitlines()
+        except FileNotFoundError:
+            print(f"File not found: {source_file_path}")
+            continue
+        except Exception as e:
+            print(f"Unexpected error while reading {source_file_path}: {e}")
+            continue
+
+        last_line = content[-1] if content else ""
 
         # Check if the last line starts with "c rc"
         if last_line.startswith("c rc"):
@@ -260,13 +268,19 @@ def cleanup():
     print("Other errors log file written.")
 
     if not os.listdir(lg_path):
-        os.rmdir(lg_path)
+        try:
+            os.rmdir(lg_path)
+        except Exception as e:
+            print(f"Error removing directory {lg_path}: {e}")
     else:
         print(
             f"Not all log files combined, {lg_path} is not deleted. Please check the folder."
         )
     if not os.listdir(wcnfddmin_lg_path):
-        os.rmdir(wcnfddmin_lg_path)
+        try:
+            os.rmdir(wcnfddmin_lg_path)
+        except Exception as e:
+            print(f"Error removing directory {wcnfddmin_lg_path}: {e}")
     else:
         print(
             f"Not all log files combined, {wcnfddmin_lg_path} is not deleted. Please check the folder."
@@ -355,10 +369,7 @@ def cleanup():
 
 def select_fuzzer():
     global terminate_flag
-    if folder is not None:
-        fuzzer = os.path.basename(os.path.normpath(folder))
-        fuzzers[fuzzer]["stats"].active_executions += 1
-        return fuzzer
+
 
     # if overall_loops < 10 * overall_number_threads and all(fuzzer_details["stats"].loops == 0 for key, fuzzer_details in fuzzers.items() if key != "DeltaDebugger"):
     #     available_fuzzers = [key for key in fuzzers if key != "DeltaDebugger"]
@@ -366,7 +377,7 @@ def select_fuzzer():
     #     fuzzers[fuzzer]["stats"].active_executions += 1
     #     return fuzzer
     
-    if overall_loops < 50 * overall_number_threads and not (all(fuzzer_details["stats"].loops > 4 for key, fuzzer_details in fuzzers.items() if key != "DeltaDebugger")):
+    if folder is not None or (overall_loops < 50 * overall_number_threads and not (all(fuzzer_details["stats"].loops > 4 for key, fuzzer_details in fuzzers.items() if key != "DeltaDebugger"))):
         available_fuzzers = [key for key in fuzzers if key != "DeltaDebugger"]
         # Find the fuzzer(s) with the lowest number of active executions
         min_active_executions = min(
@@ -380,6 +391,11 @@ def select_fuzzer():
         # print(f"loops: {overall_loops}, fuzzer: {fuzzer}")
         fuzzers[fuzzer]["stats"].active_executions += 1
         return fuzzer
+    
+    if folder is not None:
+        fuzzer = os.path.basename(os.path.normpath(folder))
+        fuzzers[fuzzer]["stats"].active_executions += 1
+        return fuzzer 
 
     min_execution_time = float("inf")
 
@@ -565,7 +581,7 @@ class ErrorTrackingSystem:
             return None
 
         active_executions = fuzzers["DeltaDebugger"]["stats"].active_executions
-        if overall_loops < 25 * len(fuzzers) or (active_executions >= (overall_number_threads / 2) and overall_number_threads != 1) :
+        if folder is None and (overall_loops < 25 * len(fuzzers) or (active_executions >= (overall_number_threads / 2) and overall_number_threads != 1)) :
             return None
 
         candidates = []
@@ -1008,32 +1024,36 @@ def check_if_valid_wcnf(filename):
         print(f"The file {filename} does not exist")
         return -4
 
-    with open(filename, "r") as file:
-        for line in file:
-            line = line.strip()
+    try:
+        with open(filename, "r") as file:
+            for line in file:
+                line = line.strip()
 
-            # Ignore comments
-            if line.startswith("c") or line == "":
-                continue
+                # Ignore comments
+                if line.startswith("c") or line == "":
+                    continue
 
-            if line.startswith("p"):
-                temp_list = list(map(str, line.split()))
-                if temp_list[1] == "wcnf" and len(temp_list) == 5:
-                    top = int(temp_list[4])
+                if line.startswith("p"):
+                    temp_list = list(map(str, line.split()))
+                    if temp_list[1] == "wcnf" and len(temp_list) == 5:
+                        top = int(temp_list[4])
+                    else:
+                        return -1
+                    hardClauseIndicator = str(top)
+                    continue
+
+                if line.startswith(hardClauseIndicator):
+                    continue
+                elif line[0].isdigit():
+                    weight = int(line.split(" ", 1)[0])
+                    if weight < 0:
+                        return -2
+                    sumOfWeights += weight
                 else:
-                    return -1
-                hardClauseIndicator = str(top)
-                continue
-
-            if line.startswith(hardClauseIndicator):
-                continue
-            elif line[0].isdigit():
-                weight = int(line.split(" ", 1)[0])
-                if weight < 0:
-                    return -2
-                sumOfWeights += weight
-            else:
-                return -3
+                    return -3
+    except Exception as e:
+        print(f"Error reading file {filename}: {e}")
+        return -4
 
     return sumOfWeights
 
@@ -1226,14 +1246,18 @@ def combine_log_files_with_substring(directory, substring, solver, fault_code):
 
     for file in sorted_files:
 
-        # Ensure that the item is a file
+        # skip if it's gone
         if not os.path.isfile(file):
             continue
 
-        # Read the entire content of the file and extract the last line
-        with open(file, "r") as file_to_read:
-            content = file_to_read.read().strip().splitlines()
-            last_line = content[-1] if content else ""
+        try:
+            with open(file, "r") as file_to_read:
+                content = file_to_read.read().strip().splitlines()
+        except FileNotFoundError:
+            print(f"File not found: {source_file_path}")
+            continue
+
+        last_line = content[-1] if content else ""
 
         # print(content)
 
@@ -1317,10 +1341,13 @@ def call_delta_debugger(solver, fault_code, instance):
         ddmin_log_path, f"{ddrv}ddmin_{solver}_{fault_code}_{instance_basename}.log"
     )
 
-    with open(log_file, "w") as log:
-        log.write(f"Command:\n{delta_debugger_command}\n")
-        log.write(delta_debugger_output.stdout)
-        log.write(delta_debugger_output.stderr)
+    try:
+        with open(log_file, "w") as log:
+            log.write(f"Command:\n{delta_debugger_command}\n")
+            log.write(delta_debugger_output.stdout)
+            log.write(delta_debugger_output.stderr)
+    except Exception as e:
+        print(f"Error writing to log file {log_file}: {e}")
 
     # Prepare prefixes to match against
     prefixes = {
@@ -1430,7 +1457,10 @@ def call_fuzzer_and_solver(seed, name, fuzzer, wcnfCompare=wcnf_compare_script):
     sum_of_weights = check_if_valid_wcnf(wcnf)
     if sum_of_weights < 0:
         if os.path.exists(wcnf):
-            os.remove(wcnf)
+            try:
+                os.remove(wcnf)
+            except Exception as e:
+                print(f"Error removing file {wcnf}: {e}")
         if sum_of_weights == -1:
             exception_errors.append({"fuzzer": name, "seed": seed, "error": "invalid p line"})
         elif sum_of_weights == -2:
@@ -1747,11 +1777,11 @@ def print_status(last_run=False):
                     print(
                         f"{BLUE}Invalid return codes       : {str(invalid_string):>14}{RESET}"
                     )
-                if analyze_fuzzer_instances:
+                if analyze_fuzzer_instances and not fuzzer_name == "DeltaDebugger":
                     stats.dump_instance_analysis()
-                if analyze_solver_timings:
+                if analyze_solver_timings and not fuzzer_name == "DeltaDebugger":
                     stats.dump_solver_analysis()
-                if analyze_last_xxx:
+                if analyze_last_xxx and not fuzzer_name == "DeltaDebugger":
                     stats.dump_fuzzer_stats()
             print(f"{YELLOW}==== Bug Descriptions ============================={RESET}")
             for code, description in sorted(error_tracker.error_descriptions.items()):

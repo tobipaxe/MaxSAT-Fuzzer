@@ -60,18 +60,18 @@ solvers = {
     #     "type": "complete",
     #     "short": "MHSSE",
     # },
-    "MaxHSCPLEX": {
-        "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/MaxHSBinaries/maxhsCplexNew -printSoln",
-        "input_format": "wcnf",
-        "type": "complete",
-        "short": "MHSC",
-    },
-    "MaxHSCPLEXOld": {
-        "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/MaxHSBinaries/maxhsCplexOld -printSoln",
-        "input_format": "wcnf",
-        "type": "complete",
-        "short": "MHSCO",
-    },
+    # "MaxHSCPLEX": {
+    #     "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/MaxHSBinaries/maxhsCplexNew -printSoln",
+    #     "input_format": "wcnf",
+    #     "type": "complete",
+    #     "short": "MHSC",
+    # },
+    # "MaxHSCPLEXOld": {
+    #     "solver_call": "/usr/local/scratch/paxiant/MaxSATFuzzer/MaxSATSolver/MaxHSBinaries/maxhsCplexOld -printSoln",
+    #     "input_format": "wcnf",
+    #     "type": "complete",
+    #     "short": "MHSCO",
+    # },
 
 
     # "sat4j": {
@@ -143,29 +143,29 @@ fuzzers = {
         "upper_bound": "--upperBound",
         "seed": "--seed",
     },
-    # "PaxianPySmallGBMO": {
-    #     "command": "Fuzzer/wcnfuzz.py --small --gbmo",
-    #     "upper_bound": "--upperBound",
-    #     "seed": "--seed",
-    # },
-    # "PaxianPyTinyGBMO": {
-    #     "command": "Fuzzer/wcnfuzz.py --tiny --gbmo",
-    #     "upper_bound": "--upperBound",
-    #     "seed": "--seed",
-    # },
+    # # "PaxianPySmallGBMO": {
+    # #     "command": "Fuzzer/wcnfuzz.py --small --gbmo",
+    # #     "upper_bound": "--upperBound",
+    # #     "seed": "--seed",
+    # # },
+    # # "PaxianPyTinyGBMO": {
+    # #     "command": "Fuzzer/wcnfuzz.py --tiny --gbmo",
+    # #     "upper_bound": "--upperBound",
+    # #     "seed": "--seed",
+    # # },
     "Pollitt": {
         "command": "Fuzzer/generateFlorianPollitWCNF.sh",
         "max_seed": 10**20,
         "min_seed": 10**19,
     },
-    # The following two fuzzers have to be downloaded and are not part of the project!
-    # But I've included the necessary scripts to reproduce the results anyhow!
+    # # The following two fuzzers have to be downloaded and are not part of the project!
+    # # But I've included the necessary scripts to reproduce the results anyhow!
     "Manthey": {
         "command": "Fuzzer/generateNorbertMantheyWCNF.sh",
         "compare_extra": "--reWriteAllWCNFs",
     },
     "Soos": {
         "command": "Fuzzer/generateMateSoosWCNF.sh"
-        },
+    },
 }
 

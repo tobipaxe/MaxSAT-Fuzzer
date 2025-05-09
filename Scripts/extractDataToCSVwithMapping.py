@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 
+TAG = ""   # will be set from args
+
 # 40	to	1.6	Invalid Return Code of MaxSAT solver == 40
 # 50	to	1.6	Invalid Return Code of MaxSAT solver == 50
 # 134	to	1.1	Invalid Return Code of MaxSAT solver == 134
@@ -45,6 +47,56 @@ ERROR_MAP = {
     655: "2.1", 656: "2.3", 701: "4.2", 702: "4.3", 703: "4.3",
 }
 
+SOLVER_NAME_MAP = {
+    #Anytime23
+    "NS-MS": "NoSAT-MaxSAT",
+    "LOAND": "LOANDRA",
+    "towiG": "tt-open-wbo-inc-Glucose4_1",
+    "towiI": "tt-open-wbo-inc-IntelSATSolver",
+    "NuWcB": "NuWLS-c_band",
+    "NuWcF": "NuWLS-c-FPS",
+    "NuWcs": "NuWLS-c_static",
+    #Exact22
+    "CMSCP": "Cashwmaxsat-CP",
+    "CMSP": "Cashwmaxsat-Plus",
+    "UMSS": "UWrMaxSat-SCIP",
+    "WMCDCL": "WMaxCDCL",
+    "WMCDCLBA": "WMaxCDCL-BandAll",
+    "UWM": "UWrMaxSat",
+    "EMS": "EvalMaxSAT",
+    "MHS22": "MaxHS",
+    "CGSS": "CGSS",
+    "Exact": "Exact",
+    #Exact23
+    # "WMCDCL": "WMaxCDCL", # already in Exact22, but equal
+    "WMC61": "WMaxCDCL-S6-HS12",
+    "WMC99": "WMaxCDCL-S9-HS9",
+    "EMSSC": "EvalMaxSAT-SCIP",
+    "EMS23": "EvalMaxSAT",
+    "CGSS2": "CGSS2",
+    "CGS2S": "CGSS2-SCIP",
+    "CHMCP": "CASHWMAXSAT-CorePlus",
+    "CHCPm": "CASHWMAXSAT-CorePlus-m",
+    "PacMP": "Pacose-MaxPre2",
+    "Pacos": "Pacose",
+    #Exact24
+    "CASDI6S": "CASHWMaxSAT-DisjCad-S6",
+    "CASDI9S": "CASHWMaxSAT-DisjCad-S9",
+    "CASDI01": "CASHWMaxSAT-DisjCom-S6",
+    "CASDI02": "CASHWMaxSAT-DisjCom-S9",
+    "EVA": "EvalMaxSAT",
+    "EVASB": "EvalMaxSAT-SBVA",
+    "EVASBSA": "EvalMaxSAT-SBVA-saveCores",
+    "EXA": "Exact",
+    "PAC": "Pacose",
+    "PAC01": "PacoseMP2",
+    "UWRSC": "UWrMaxSat-SCIP",
+    "CGSABCG": "cgss_abst_cg",
+    "CGSDE": "cgss_default",
+    "WMA": "wmaxcdcl",
+    "WMA1200": "wmaxcdcl-owbo1200",
+}
+
 def generate_general_stats(log_text, output_dir):
     """Extract and write general stats to general_stats.csv."""
     stats_pattern = re.compile(r"={3,} (.+?) Stats ={3,}\n(.+?)(?=\n={3,}|\Z)", re.DOTALL)
@@ -80,7 +132,7 @@ def generate_general_stats(log_text, output_dir):
         overall = all_data.get("Overall", {})
         if overall.get('Total Time') and overall.get('Executions'):
             overall['Average Time'] = str(round(float(overall['Total Time']) / int(overall['Executions']), 2))
-    out_path = os.path.join(output_dir, 'general_stats.csv')
+    out_path = os.path.join(output_dir, f'general_stats_{TAG}.csv')
     with open(out_path, 'w', newline='') as file:
         writer = csv.writer(file, delimiter=';')
         headers = [''] + list(all_data.keys())
@@ -90,7 +142,7 @@ def generate_general_stats(log_text, output_dir):
             row = [key] + [all_data.get(name, {}).get(key, '') for name in all_data]
             writer.writerow(row)
     print("CSV file generated:", out_path)
-    print("\tGeneral statistics (e.g. execution times, thread count) are saved in general_stats.csv.")
+    print(f"\tGeneral statistics (e.g. execution times, thread count) are saved in general_stats_{TAG}.csv.")
     return all_data, stats_matches
 
 def generate_bug_stats(log_text, stats_matches, output_dir, apply_map=False):
@@ -116,6 +168,8 @@ def generate_bug_stats(log_text, stats_matches, output_dir, apply_map=False):
                 try:
                     solver_bug, count_time = ub.strip().split(':')
                     solver, bug = re.match(r"(\w+)\((\d+)\)", solver_bug.strip()).groups()
+                    # Replace solver name if it exists in the map
+                    solver = SOLVER_NAME_MAP.get(solver, solver)
                     count, first_time = count_time.split('/')
                     # Determine mapped bug for consistency
                     mapped = ERROR_MAP.get(int(bug), bug) if apply_map else bug
@@ -135,6 +189,8 @@ def generate_bug_stats(log_text, stats_matches, output_dir, apply_map=False):
                 try:
                     solver_bug, count_time = entry.strip().split(':')
                     solver, bug = re.match(r"(\w+)\((\d+)\)", solver_bug.strip()).groups()
+                    # Replace solver name if it exists in the map
+                    solver = SOLVER_NAME_MAP.get(solver, solver)
                     # Determine mapped bug consistently
                     mapped = ERROR_MAP.get(int(bug), bug) if apply_map else bug
                     # Skip if this solver/bug combo was already marked unique
@@ -207,7 +263,7 @@ def generate_bug_stats(log_text, stats_matches, output_dir, apply_map=False):
 
     # Determine output filename with mapping suffix
     suffix = '_mapped' if apply_map else ''
-    out_path = os.path.join(output_dir, f'bugs_stats{suffix}.csv')
+    out_path = os.path.join(output_dir, f'bugs_stats{suffix}_{TAG}.csv')
     # Write CSV with multi-row header
     with open(out_path, 'w', newline='') as file:
         writer = csv.writer(file, delimiter=';')
@@ -250,7 +306,41 @@ def generate_bug_stats(log_text, stats_matches, output_dir, apply_map=False):
                     writer.writerow([m.group(1), m.group(2)])
 
     print("CSV file generated:", out_path)
-    print(f"\tDetailed bug statistics saved in bugs_stats{suffix}.csv.")
+    print(f"\tDetailed bug statistics saved in bugs_stats{suffix}_{TAG}.csv.")
+
+    # === NEW: Generate Solver-Bug Matrix ===
+    solver_bug_matrix_path = os.path.join(output_dir, f'solver_bug_matrix{suffix}_{TAG}.csv')
+    overall_bugs = bug_details.get('Overall', [])
+    delta_debugger_bugs = bug_details.get('DeltaDebugger', [])
+    solvers = sorted(set(bug['Solver'] for bug in overall_bugs))
+    bugs = sorted(set(bug['Bug'] for bug in overall_bugs))
+
+    # Create a set of unique solver-bug combinations in DeltaDebugger
+    delta_debugger_unique = set(
+        (bug['Solver'], bug['Bug']) for bug in delta_debugger_bugs if bug.get('Unique', '').lower() == 'yes'
+    )
+
+    with open(solver_bug_matrix_path, 'w', newline='') as matrix_file:
+        writer = csv.writer(matrix_file, delimiter=';')
+        # Write header row
+        writer.writerow(['Solver \\ Bug'] + bugs)
+        # Write rows for each solver
+        for solver in solvers:
+            row = [solver]
+            for bug in bugs:
+                if any(b['Solver'] == solver and b['Bug'] == bug for b in overall_bugs):
+                    # Check if the combination is unique in DeltaDebugger
+                    if (solver, bug) in delta_debugger_unique:
+                        row.append('SD')  # Both S and D
+                    else:
+                        row.append('S')  # Only S
+                else:
+                    row.append('')  # No occurrence
+            writer.writerow(row)
+
+    print("CSV file generated:", solver_bug_matrix_path)
+    print(f"\tSolver-Bug matrix saved in solver_bug_matrix{suffix}_{TAG}.csv.")
+
     return bug_details, virtual_best
 
 def generate_fuzzer_stats(log_text, output_dir):
@@ -267,19 +357,32 @@ def generate_fuzzer_stats(log_text, output_dir):
         re.DOTALL | re.MULTILINE
     )
     fuzzer_matches = list(fuzzer_specific_pattern.finditer(log_text))
-    out_path = os.path.join(output_dir, 'fuzzer_stats.csv')
+    out_path = os.path.join(output_dir, f'fuzzer_stats_{TAG}.csv')
     with open(out_path, 'w', newline='') as file:
         writer = csv.writer(file, delimiter=';')
         writer.writerow(['Fuzzer', 'Stat', 'Min', 'Max', 'Avg', 'Percentage', 'Additional Info'])
         for fuzzer_match in fuzzer_matches:
             fuzzer_name = fuzzer_match.group('fuzzer').strip()
             block = fuzzer_match.group('block')
+
+            # Ignore lines starting with "Solver" and the following lines
+            filtered_block = []
+            skip_lines = False
+            for line in block.splitlines():
+                if line.startswith("Solver"):
+                    skip_lines = True
+                elif skip_lines and line.strip() == "":
+                    skip_lines = False
+                elif not skip_lines:
+                    filtered_block.append(line)
+            block = "\n".join(filtered_block)
+
             table_match = table_pattern.search(block)
             if table_match:
                 stats_table = table_match.group('stats').strip().split('\n')
                 for line in stats_table:
                     tokens = re.split(r"\s+", line.strip())
-                    # Ensure tokens has at least 6 elements; pad if not.
+                    # Ensure tokens have at least 6 elements; pad if not.
                     while len(tokens) < 6:
                         tokens.append('')
                     stat = tokens[0]
@@ -292,7 +395,7 @@ def generate_fuzzer_stats(log_text, output_dir):
                         additional_info = tokens[2] + " " + " ".join(tokens[4:])
                     elif stat == "Satisfiable":
                         # For Satisfiable, clear numeric columns, take the real percentage from token[1]
-                        # and set additional info as all tokens from index 2 joined (yielding "% of the hard clauses are satisfiable")
+                        # and set additional info as all tokens from index 2 joined
                         min_val = ""
                         max_val = ""
                         avg_val = ""
@@ -319,10 +422,9 @@ def generate_fuzzer_stats(log_text, output_dir):
                         additional_info
                     ])
     print("CSV file generated:", out_path)
-    print("\tFuzzer-specific statistics (excluding DeltaDebugger) are saved in fuzzer_stats.csv.")
+    print(f"\tFuzzer-specific statistics (excluding DeltaDebugger) are saved in fuzzer_stats_{TAG}.csv.")
 
-    
-    
+      
 def generate_bug_first_occurrence(bug_details, virtual_best, output_dir, apply_map=False):
     """Collect bug first occurrence times per solver/bug and write bug_first_occurrence.csv."""
     all_solver_bug = set()
@@ -340,7 +442,7 @@ def generate_bug_first_occurrence(bug_details, virtual_best, output_dir, apply_m
     fuzzer_names = ['VirtualBest'] + fuzzer_names
     # Determine output filename with mapping suffix
     suffix = '_mapped' if apply_map else ''
-    out_path = os.path.join(output_dir, f'bug_first_occurrence{suffix}.csv')
+    out_path = os.path.join(output_dir, f'bug_first_occurrence{suffix}_{TAG}.csv')
     with open(out_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile, delimiter=';')
         header = ['Solver', 'Bug'] + fuzzer_names
@@ -351,7 +453,7 @@ def generate_bug_first_occurrence(bug_details, virtual_best, output_dir, apply_m
                 row.append(fuzzer_times.get((solver, bug), {}).get(fuzzer, ''))
             writer.writerow(row)
     print("CSV file generated:", out_path)
-    print(f"\tAggregated bug first occurrence times by solver and fuzzer are saved in bug_first_occurrence{suffix}.csv")
+    print(f"\tAggregated bug first occurrence times by solver and fuzzer are saved in bug_first_occurrence{suffix}_{TAG}.csv")
 
 def generate_fuzzer_comparison(bug_details, output_dir):
     """Build a comparison matrix between fuzzers and write fuzzer_comparison.csv."""
@@ -372,7 +474,7 @@ def generate_fuzzer_comparison(bug_details, output_dir):
                 col_set = bugs_found.get(fuzzer_col, set())
                 only_in_row = row_set - col_set
                 comparison_matrix[fuzzer_row][fuzzer_col] = len(only_in_row)
-    out_path = os.path.join(output_dir, 'fuzzer_comparison.csv')
+    out_path = os.path.join(output_dir, f'fuzzer_comparison_{TAG}.csv')
     with open(out_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile, delimiter=';')
         writer.writerow([''] + ['Total Bugs'] + final_fuzzers)
@@ -381,26 +483,31 @@ def generate_fuzzer_comparison(bug_details, output_dir):
             row = [fuzzer_row, total] + [comparison_matrix[fuzzer_row][fuzzer_col] for fuzzer_col in final_fuzzers]
             writer.writerow(row)
     print("CSV file generated:", out_path)
-    print("\tA matrix comparing bug detection differences between fuzzers is saved in fuzzer_comparison.csv.")
+    print(f"\tA matrix comparing bug detection differences between fuzzers is saved in fuzzer_comparison_{TAG}.csv.")
 
-def generate_cdf_plot(output_dir):
+def generate_cdf_plot(output_dir, apply_map=False):
     """Create both linear and logarithmic CDF plots from the bugs_stats.csv file.
     Always ignore overall statistics and save the plots as fuzzer_cdf_plot_linear.png and fuzzer_cdf_plot_log.png in output_dir."""
-    in_path = os.path.join(output_dir, 'bugs_stats.csv')
-    out_png_linear = os.path.join(output_dir, 'fuzzer_cdf_plot_linear.png')
-    out_png_log = os.path.join(output_dir, 'fuzzer_cdf_plot_log.png')
+    
+    if apply_map:
+        mapping_suffix = '_mapped'
+    else:
+        mapping_suffix = ''
+    in_path = os.path.join(output_dir, f'bugs_stats{mapping_suffix}_{TAG}.csv')
+    out_png_linear = os.path.join(output_dir, f'fuzzer_cdf_plot_linear{mapping_suffix}_{TAG}.png')
+    out_png_log = os.path.join(output_dir, f'fuzzer_cdf_plot_log{mapping_suffix}_{TAG}.png')
 
     # Predefined color mapping for fuzzers
     FUZZER_COLORS = {
-        "VirtualBest": "blue",
-        "DeltaDebugger": "orange",
-        "PaxianPy": "green",
+        "VirtualBest": "orange",
+        "DeltaDebugger": "blue",
+        "PaxianPy": "lime",
         "PaxianPyTiny": "red",
-        "PaxianPySmall": "purple",
-        "Paxian": "brown",
-        "Manthey": "magenta",
-        "Pollitt": "teal",
-        "Soos": "olive"
+        "PaxianPySmall": "gold",
+        "Paxian": "deepskyblue",
+        "Manthey": "chocolate",
+        "Pollitt": "green",
+        "Soos": "darkorchid"
     }
 
     # Load CSV with two header rows
@@ -428,15 +535,19 @@ def generate_cdf_plot(output_dir):
     # Sort by number of bugs (descending)
     fuzzer_data.sort(key=lambda x: len(x[1]), reverse=True)
 
+    # Adjust TAG for plot titles if it contains underscores
+    plot_tag = TAG.replace('_', ' ') if '_' in TAG else TAG
+
     # Generate Linear Plot
     plt.figure(figsize=(10, 6))
     for label, times, cdf in fuzzer_data:
         color = FUZZER_COLORS.get(label, None)  # Use predefined color or default
-        plt.step(times, cdf, label=label, color=color)
+        bug_count = len(times)  # Count the number of bugs found by the fuzzer
+        plt.step(times, cdf, label=f"({bug_count} bugs) {label}", color=color)
     plt.xscale('linear')
     plt.xlabel('Time (seconds)')
     plt.ylabel('Bugs Detected')
-    plt.title('CDF of First Bug Occurrences Over Time per Fuzzer (Linear Scale)')
+    plt.title(f'{plot_tag} CDF of First Bug Occurrences Over Time per Fuzzer (Linear Scale)')
     plt.legend()
     plt.grid(True, which="both", ls="--")
     plt.tight_layout()
@@ -448,11 +559,17 @@ def generate_cdf_plot(output_dir):
     plt.figure(figsize=(10, 6))
     for label, times, cdf in fuzzer_data:
         color = FUZZER_COLORS.get(label, None)  # Use predefined color or default
-        plt.step(times, cdf, label=label, color=color)
-    plt.xscale('log', base=2)
+        bug_count = len(times)  # Count the number of bugs found by the fuzzer
+        plt.step(times, cdf, label=f"({bug_count} bugs) {label}", color=color)
+        plt.xscale('log', base=2)
+    plt.xlim(2**-3, 2**19)  # Set x-axis range from 2^-1 to 2^19
+    if apply_map:
+        plt.ylim(0, 75)  # Set y-axis range from 0 to 75 for mapped data
+    else:
+        plt.ylim(0, 95)   
     plt.xlabel('Time (seconds, log scale base 2)')
     plt.ylabel('Bugs Detected')
-    plt.title('CDF of First Bug Occurrences Over Time per Fuzzer (Logarithmic Scale)')
+    plt.title(f'{plot_tag} CDF of First Bug Occurrences Over Time per Fuzzer (Logarithmic Scale)')
     plt.legend()
     plt.grid(True, which="both", ls="--")
     plt.tight_layout()
@@ -461,12 +578,60 @@ def generate_cdf_plot(output_dir):
     plt.close()
     print("Logarithmic CDF plot generated:", out_png_log)
 
+def generate_solver_timings(log_text, output_dir):
+    """Extract solver timing/memory info *per fuzzer* and save to solver_timings_{TAG}.csv."""
+    # Reuse the fuzzer-specific regex
+    fuzzer_specific_pattern = re.compile(
+        r"^=+\s*(?P<fuzzer>(?!DeltaDebugger)\S+)\s+Stats\s*=+\s*\n"
+        r"(?P<block>.*?)(?=^=+\s*(?:DeltaDebugger|\S+\s+Stats)\s*=+|\Z)",
+        re.DOTALL | re.MULTILINE
+    )
+    # Within each block look for the Solver… table
+    solver_timings_pattern = re.compile(
+        r"^\s*Solver\s+Min\s+Max\s+Average\s+Timeouts\s+Min\s+Max\s+Average\s*$\n"
+        r"(?P<timings>(?:^\s*\S+\s+.+\n)+)",
+        re.MULTILINE
+    )
+
+    out_path = os.path.join(output_dir, f'solver_timings_{TAG}.csv')
+    with open(out_path, 'w', newline='') as file:
+        writer = csv.writer(file, delimiter=';')
+        # Write header with Fuzzer first
+        writer.writerow([
+            "Fuzzer", "Solver", "Min Time", "Max Time", "Avg Time", "Timeouts",
+            "Min Memory", "Max Memory", "Avg Memory"
+        ])
+
+        for fm in fuzzer_specific_pattern.finditer(log_text):
+            fuzzer = fm.group('fuzzer')
+            block = fm.group('block')
+            m = solver_timings_pattern.search(block)
+            if not m:
+                continue
+
+            for line in m.group('timings').strip().splitlines():
+                tokens = re.split(r"\s+", line.strip())
+                if len(tokens) < 8:
+                    continue
+                solver_short = tokens[0]
+                solver_long = SOLVER_NAME_MAP.get(solver_short, solver_short)
+                min_t, max_t, avg_t, to = tokens[1:5]
+                min_m, max_m, avg_m = tokens[5:8]
+                writer.writerow([
+                    fuzzer, solver_long,
+                    min_t, max_t, avg_t, to,
+                    min_m, max_m, avg_m
+                ])
+
+    print("CSV file generated:", out_path)
+    print(f"\tPer-fuzzer solver timing/memory saved in solver_timings_{TAG}.csv.")
+
 # === NEW FUNCTION: Generate comprehensive fuzzer summary table ===
 def generate_fuzzer_summary_table(output_dir):
     import pandas as pd
     import os
 
-    df = pd.read_csv(os.path.join(output_dir, 'fuzzer_stats.csv'), delimiter=';')
+    df = pd.read_csv(os.path.join(output_dir, f'fuzzer_stats_{TAG}.csv'), delimiter=';')
     
     summary_rows = []
     fuzzers = df['Fuzzer'].unique()
@@ -575,18 +740,79 @@ def generate_fuzzer_summary_table(output_dir):
          'Variables (min–max, avg)'
     ])
     
-    summary_path = os.path.join(output_dir, 'fuzzer_summary.csv')
+    summary_path = os.path.join(output_dir, f'fuzzer_summary_{TAG}.csv')
     summary_df.to_csv(summary_path, sep=';', index=False)
-    print("Fuzzer summary CSV generated:", summary_path)
+    print("CSV file generated:", summary_path)
 
-def extract_data(log_text, output_dir):
-    all_data, stats_matches = generate_general_stats(log_text, output_dir)
-    bug_details, virtual_best = generate_bug_stats(log_text, stats_matches, output_dir)
-    generate_fuzzer_stats(log_text, output_dir)
-    generate_bug_first_occurrence(bug_details, virtual_best, output_dir)
-    generate_fuzzer_comparison(bug_details, output_dir)
-    generate_fuzzer_summary_table(output_dir)
-    generate_cdf_plot(output_dir)
+def generate_fuzzer_overview_table(output_dir, apply_map=False):
+    """Combine summary, general_stats, solver_timings and fuzzer_comparison into one CSV."""
+    # choose mapped vs. unmapped where applicable
+    suffix = '_mapped' if apply_map else ''
+
+    # paths (apply same suffix)
+    gen_path   = os.path.join(output_dir, f'general_stats_{TAG}.csv')
+    sum_path   = os.path.join(output_dir, f'fuzzer_summary_{TAG}.csv')
+    time_path  = os.path.join(output_dir, f'solver_timings_{TAG}.csv')
+    comp_path  = os.path.join(output_dir, f'fuzzer_comparison_{TAG}.csv')
+
+    # load
+    general_df = pd.read_csv(gen_path, sep=';', index_col=0)
+    summary_df = pd.read_csv(sum_path, sep=';')
+    timings_df = pd.read_csv(time_path, sep=';')
+    comp_df    = pd.read_csv(comp_path, sep=';', index_col=0)
+
+    rows = []
+    for _, s in summary_df.iterrows():
+        f = s['Fuzzer']
+        # from summary
+        obj0 = s.get('Objective 0', '')
+        sat = s.get('Satisfiable Hard Clauses', '')
+
+        # from general_stats
+        execs = general_df.at['Executions', f] if f in general_df.columns else ''
+        avg_t = general_df.at['Average Time', f] if f in general_df.columns else ''
+
+        # from solver_timings: max & count Timeouts%
+        df_t = timings_df[timings_df['Fuzzer'] == f]
+        if not df_t.empty:
+            to_vals = df_t['Timeouts'].str.rstrip('%').astype(float)
+            max_to = to_vals.max()
+            max_to = f"{max_to:.3f}%"
+            count_to = int((to_vals > 0.01).sum())
+            count_to = str(count_to)
+        else:
+            max_to = ''
+            count_to = ''
+
+        # from fuzzer_comparison: Total Bugs
+        total = comp_df.at[f, 'Total Bugs'] if f in comp_df.index else ''
+
+        rows.append({
+            'Fuzzer': f,
+            'Total\nBugs': total,
+            'Executions': execs,
+            'Average Time\n(xx Solver)': avg_t,
+            'max\nTimouts': max_to,
+            'count\nTimouts': count_to,
+            'Objective 0': obj0,
+            'Satisfiable\nHardClauses': sat
+        })
+
+    overview_df = pd.DataFrame(rows, columns=[
+        'Fuzzer',
+        'Total\nBugs',
+        'Executions',
+        'Average Time\n(xx Solver)',
+        'max\nTimouts',
+        'count\nTimouts',
+        'Objective 0',
+        'Satisfiable\nHardClauses'
+    ])
+    overview_fname = f'fuzzer_overview{suffix}_{TAG}.csv'
+    out_path = os.path.join(output_dir, overview_fname)
+    overview_df.to_csv(out_path, sep=';', index=False)
+    print("CSV file generated:", out_path)
+    print(f"\tComprehensive fuzzer overview table combining general, summary, timing and comparison stats saved in {overview_fname}.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -602,7 +828,15 @@ if __name__ == '__main__':
         action='store_true',
         help='Apply embedded error-to-fault mapping when generating bug stats'
     )
+    parser.add_argument(
+        '--tag', 
+        dest='tag', 
+        default='', 
+        help='If set, insert this tag into all filenames and plot titles')
     args = parser.parse_args()
+
+    # build TAG once
+    TAG = f"{args.tag}" if args.tag else ""
 
     log_file_path = args.input_log_file
     output_dir = os.path.dirname(os.path.abspath(log_file_path))
@@ -617,5 +851,7 @@ if __name__ == '__main__':
     generate_bug_first_occurrence(bug_details, virtual_best, output_dir, apply_map=args.apply_map)
     generate_fuzzer_comparison(bug_details, output_dir)
     generate_fuzzer_summary_table(output_dir)
-    generate_cdf_plot(output_dir)
+    generate_solver_timings(log_text, output_dir)
+    generate_fuzzer_overview_table(output_dir, apply_map=args.apply_map)
+    generate_cdf_plot(output_dir, apply_map=args.apply_map)
     print(f"CSV files and plots generated in: {output_dir}")
