@@ -16,14 +16,14 @@ import csv
 import statistics
 import typing
 import psutil
-from config import (
+from configPrivateCertified import (
     fuzzers,
     wcnf_compare_script,
     delta_debugger_compare_script,
     delta_debugger,
     solvers
 )
-
+max_equal_minimizations = 2
 global_timeout = -1
 fuzzer_timeout = -1
 minimize = 0
@@ -597,7 +597,7 @@ class ErrorTrackingSystem:
 
                 # Ensure the combination meets the reduction criteria
                 if (
-                    active_count < 2
+                    active_count < max_equal_minimizations
                     and successful_count + active_count < minimize
                     and (
                         failure_count < minimize * successful_count
@@ -1853,9 +1853,15 @@ def check_disk_space(folder_path):
 
 
 def main():
-    global ddmin_log_path, min_path, wcnfddmin_lg_path, delta_debugger_compare_script, minimize, analyze_last_xxx, folder, file_list, analyze_fuzzer_instances, analyze_solver_timings, save_solver_timings, terminate_flag, timeout, overall_number_threads, wcnf_compare_script, faulty_wcnf_location, log_path, lg_path, upper_bound, threads, csv_filename, location, global_timeout, fuzzer_timeout
+    global max_equal_minimizations, ddmin_log_path, min_path, wcnfddmin_lg_path, delta_debugger_compare_script, minimize, analyze_last_xxx, folder, file_list, analyze_fuzzer_instances, analyze_solver_timings, save_solver_timings, terminate_flag, timeout, overall_number_threads, wcnf_compare_script, faulty_wcnf_location, log_path, lg_path, upper_bound, threads, csv_filename, location, global_timeout, fuzzer_timeout
     parser = argparse.ArgumentParser(
         description="This is a parallel MaxSAT fuzzing script!!"
+    )
+    parser.add_argument(
+        "--maxEqualMinimizations",
+        default=2,
+        type=int,
+        help="Maximum number of active delta debugger instances for the same error (Default == 2).",
     )
     parser.add_argument(
         "-t",
@@ -1927,6 +1933,7 @@ def main():
 
     # argcomplete.autocomplete(parser)
     args = parser.parse_args()
+    max_equal_minimizations = args.maxEqualMinimizations
     analyze_last_xxx = args.lastxxx
     if args.lastxxx:
         args.saveSolverTimings = True

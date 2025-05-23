@@ -52,10 +52,10 @@ cd "$dirname" || {
 echo "c Start Pacose on file $wcnfFile: "
 echo "output-"$randomNumber".var/.wat"
 #./run -d 10 -v output-"$randomNumber".var -w output-"$randomNumber".wat -C 3600 -W 4000 /usr/local/scratch/paxiant/gitlab/PacoseMaxSATSolver-Certified/bin/Pacose --encoding dgpw --proofFile "$proofFile" "$wcnfFile"
-./run -d 10 -v output-"$randomNumber".var -w output-"$randomNumber".wat -C 3600 -W 4000 /data/scratch/paxiant/certified-run/PacoseMaxSATSolver-Certified/bin/Pacose --encoding dgpw --proofFile "$proofFile" "$wcnfFile"
+./run -d 10 -v /tmp/output-"$randomNumber".var -w /tmp/output-"$randomNumber".wat -C 3600 -W 4000 /usr/local/scratch/paxiant/gitlab/PacoseMaxSATSolver-Certified/bin/Pacose --proofFile "$proofFile" "$wcnfFile"
 # Use grep and awk to extract the INTEGER part
-PacoseStatus=$(grep -oP '(?<=Child status: )\d+' output-"$randomNumber".wat)
-grep "Child status:" output-"$randomNumber".wat
+PacoseStatus=$(grep -oP '(?<=Child status: )\d+' /tmp/output-"$randomNumber".wat)
+grep "Child status:" /tmp/output-"$randomNumber".wat
 
 # Check if the extracted value is a number and not equal to 30
 if [[ "$PacoseStatus" =~ ^[0-9]+$ ]] && [ "$PacoseStatus" -eq 30 ]; then
@@ -63,30 +63,30 @@ if [[ "$PacoseStatus" =~ ^[0-9]+$ ]] && [ "$PacoseStatus" -eq 30 ]; then
     # Your code for the case where the number is not 30
 else
     echo "The Pacose status is not a number or is not 30. Status: $PacoseStatus"
-    # Your code for the case where the number is 30
+    rm -f /tmp/output-"$randomNumber"*
     exit 1
 fi
 
-grep "CPUTIME=" output-"$randomNumber".var
-grep "MAXVM=" output-"$randomNumber".var
+grep "CPUTIME=" /tmp/output-"$randomNumber".var
+grep "MAXVM=" /tmp/output-"$randomNumber".var
 #cat output.wat
-grep "Child status:" output-"$randomNumber".wat
-grep "CPU time exceeded:" output-"$randomNumber".wat
-grep "Maximum VSize exceeded:" output-"$randomNumber".wat
-grep "Maximum wall clock time exceeded:" output-"$randomNumber".wat
-if grep "CPU time exceeded:" output-"$randomNumber".wat; then
+grep "Child status:" /tmp/output-"$randomNumber".wat
+grep "CPU time exceeded:" /tmp/output-"$randomNumber".wat
+grep "Maximum VSize exceeded:" /tmp/output-"$randomNumber".wat
+grep "Maximum wall clock time exceeded:" /tmp/output-"$randomNumber".wat
+if grep "CPU time exceeded:" /tmp/output-"$randomNumber".wat; then
     echo "c Pacose CPU time exceeded: $cto seconds"
-    rm -f output-"$randomNumber"*
+    rm -f /tmp/output-"$randomNumber"*
     exit 2
     # Add commands to handle this specific case
-elif grep "Maximum wall clock time exceeded:" output-"$randomNumber".wat; then
+elif grep "Maximum wall clock time exceeded:" /tmp/output-"$randomNumber".wat; then
     echo "c Pacose Wall clock time exceeded: $wto seconds"
-    rm -f output-"$randomNumber"*
+    rm -f /tmp/output-"$randomNumber"*
     exit 3
     # Add commands to handle this specific case
-elif grep "Maximum VSize exceeded:" output-"$randomNumber".wat; then
+elif grep "Maximum VSize exceeded:" /tmp/output-"$randomNumber".wat; then
     echo "c Pacose Maximum VSize exceeded: $mem MB"
-    rm -f output-"$randomNumber"*
+    rm -f /tmp/output-"$randomNumber"*
     exit 4
     # Add commands to handle this specific case
 fi
@@ -97,11 +97,11 @@ if [[ "$PacoseStatus" =~ ^[0-9]+$ ]] && [ "$PacoseStatus" -eq 30 ]; then
     # Your code for the case where the number is not 30
 else
     echo "The Pacose status is not a number or is not 30. Status: $PacoseStatus"
-    rm -f output-"$randomNumber"*
+    rm -f /tmp/output-"$randomNumber"*
     # Your code for the case where the number is 30
     exit 1
 fi
-rm -f output-"$randomNumber"*
+rm -f /tmp/output-"$randomNumber"*
 
 grep -E "$proofString|SHOULDNEVERHAPPEN" "$proofFile"
 proofFileReturnValue=$?
@@ -152,8 +152,8 @@ fi
 
 rm -f "$proofFile" "$veripbOutput"
 #echo "$proofFile $veripbOutput"
-find /tmp/ -name "*.pbp" -mmin +120 -delete 2>/dev/null
-find /tmp/ -name "*.pblog" -mmin +240 -delete 2>/dev/null
+find /tmp/ -name "*.pbp" -mmin +10 -delete 2>/dev/null
+find /tmp/ -name "*.pblog" -mmin +10 -delete 2>/dev/null
 
 # THIS HAS TO BE REMOVED FOR THE DELTA DEBUGGING!!!!
 # find /tmp/ -name "*.wcnf" -mmin +90 -delete 2>/dev/null

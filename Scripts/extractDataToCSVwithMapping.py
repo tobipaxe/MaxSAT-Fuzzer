@@ -7,6 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
+import glob, subprocess
 
 TAG = ""   # will be set from args
 
@@ -15,7 +16,18 @@ TAG = ""   # will be set from args
 # 134	to	1.1	Invalid Return Code of MaxSAT solver == 134
 # 135	to	1.2	Invalid Return Code of MaxSAT solver == 135
 # 136	to	1.3	Invalid Return Code of MaxSAT solver == 136
-## 137    to	1.4	Invalid Return Code of MaxSAT solver == 137 -- did not occur
+# 1  :  to  1.6 Invalid Return Code of MaxSAT solver == 1
+# 8  :  to  1.6 Invalid Return Code of MaxSAT solver == 8
+# 13 :  to  1.6 Invalid Return Code of MaxSAT solver == 13
+# 38 :  to  1.6 Invalid Return Code of MaxSAT solver == 38
+# 43 :  to  1.6 Invalid Return Code of MaxSAT solver == 43
+# 84 :  to  1.6 Invalid Return Code of MaxSAT solver == 84
+# 160:  to  1.6 Invalid Return Code of MaxSAT solver == 160
+# 174:  to  1.6 Invalid Return Code of MaxSAT solver == 174
+# 179:  to  1.6 Invalid Return Code of MaxSAT solver == 179
+# 130:  to  1.6 Invalid Return Code of MaxSAT solver == 130
+# 133:  to  1.6 Invalid Return Code of MaxSAT solver == 133
+# 137    to	1.4	Invalid Return Code of MaxSAT solver == 137 -- did not occur
 # 139	to	1.5	Invalid Return Code of MaxSAT solver == 139
 # 501	to	3.2	POTENTIAL ERROR: TIMEOUT and MEMPEAK  Timeout and Memory peak (740748) is 100 times bigger than the median memory peak.
 # 502	to	3.1	POTENTIAL ERROR: TIMEOUT is 100 times bigger than median time of all other solvers.
@@ -23,6 +35,7 @@ TAG = ""   # will be set from args
 # 602	to	2.5	Hard clauses are SATISFIABLE, but solver states s UNSATISFIABLE.
 # 603	to	2.4	Verifier returned, that hard clauses are UNSATISFIABLE but solver states otherwise.
 # 605	to	4.1	s status line NOT in solver output.
+# 606	to	4.4	Solver status = UNKNOWN Unexpected result in the status line.
 # 607	to	2.6	Verifier returned, that given model is too small.
 # 608	to	2.6	Verifier returned that given model is UNSATISAFIABLE.
 # 609	to	4.1	s string in o-value (example): o 0c All SoftClauses are Satisfiable!
@@ -40,9 +53,12 @@ TAG = ""   # will be set from args
 
 # --- Embedded error-to-fault mapping ---
 ERROR_MAP = {
-    40: "1.6", 50: "1.6", 134: "1.1", 135: "1.2", 136: "1.3", 139: "1.5", 137: "1.4",
+    1: "1.6", 8: "1.6", 13: "1.6", 38: "1.6", 40: "1.6", 43: "1.6", 
+    50: "1.6", 84: "1.6", 160: "1.6", 174: "1.6", 179: "1.6",
+    130: "1.6", 133: "1.6",
+    134: "1.1", 135: "1.2", 136: "1.3", 139: "1.5", 137: "1.4",
     501: "3.2", 502: "3.1", 511: "4.6", 602: "2.5", 603: "2.4",
-    605: "4.1", 607: "2.6", 608: "2.6", 609: "4.1", 611: "4.1",
+    605: "4.1", 606: "4.4", 607: "2.6", 608: "2.6", 609: "4.1", 611: "4.1",
     613: "2.3", 650: "2.2", 651: "2.3", 652: "2.3", 653: "2.3",
     655: "2.1", 656: "2.3", 701: "4.2", 702: "4.3", 703: "4.3",
 }
@@ -50,12 +66,17 @@ ERROR_MAP = {
 SOLVER_NAME_MAP = {
     #Anytime23
     "NS-MS": "NoSAT-MaxSAT",
+    "NSMS": "NoSAT-MaxSAT",
     "LOAND": "LOANDRA",
-    "towiG": "tt-open-wbo-inc-Glucose4_1",
-    "towiI": "tt-open-wbo-inc-IntelSATSolver",
-    "NuWcB": "NuWLS-c_band",
+    "towiG": "tt-owi-Glucose41",
+    #"towiG": "tt-open-wbo-inc-Glucose4_1",
+    "towiI": "tt-owi-IntelSATSolver",
+    #"towiI": "tt-open-wbo-inc-IntelSATSolver",
+    "NuWcB": "NuWLS-c-Band",
+    # "NuWcB": "NuWLS-c_band",
     "NuWcF": "NuWLS-c-FPS",
-    "NuWcs": "NuWLS-c_static",
+    "NuWcs": "NuWLS-c-static",
+    #"NuWcs": "NuWLS-c_static",
     #Exact22
     "CMSCP": "Cashwmaxsat-CP",
     "CMSP": "Cashwmaxsat-Plus",
@@ -64,9 +85,9 @@ SOLVER_NAME_MAP = {
     "WMCDCLBA": "WMaxCDCL-BandAll",
     "UWM": "UWrMaxSat",
     "EMS": "EvalMaxSAT",
-    "MHS22": "MaxHS",
-    "CGSS": "CGSS",
-    "Exact": "Exact",
+    "MHS22": "MSE22-MaxHS",
+    "CGSS": "MSE22-CGSS",
+    "Exact": "MSE22-Exact",
     #Exact23
     # "WMCDCL": "WMaxCDCL", # already in Exact22, but equal
     "WMC61": "WMaxCDCL-S6-HS12",
@@ -86,7 +107,8 @@ SOLVER_NAME_MAP = {
     "CASDI02": "CASHWMaxSAT-DisjCom-S9",
     "EVA": "EvalMaxSAT",
     "EVASB": "EvalMaxSAT-SBVA",
-    "EVASBSA": "EvalMaxSAT-SBVA-saveCores",
+    #"EVASBSA": "EvalMaxSAT-SBVA-saveCores",
+    "EVASBSA": "EvalMaxSAT-SBVA-sC",
     "EXA": "Exact",
     "PAC": "Pacose",
     "PAC01": "PacoseMP2",
@@ -95,6 +117,7 @@ SOLVER_NAME_MAP = {
     "CGSDE": "cgss_default",
     "WMA": "wmaxcdcl",
     "WMA1200": "wmaxcdcl-owbo1200",
+    #"WMA1200": "wmaxcdcl-openwbo1200",
 }
 
 def generate_general_stats(log_text, output_dir):
@@ -308,34 +331,92 @@ def generate_bug_stats(log_text, stats_matches, output_dir, apply_map=False):
     print("CSV file generated:", out_path)
     print(f"\tDetailed bug statistics saved in bugs_stats{suffix}_{TAG}.csv.")
 
-    # === NEW: Generate Solver-Bug Matrix ===
+    # === NEW: Load minimization summary if present ===
+    minim_suffix = f'minimized_tested_again_summary{suffix}_{TAG}.csv'
+    minim_path = os.path.join(output_dir, minim_suffix)
+    minim_map = {}  # (solver,bug) -> flags string
+    if os.path.exists(minim_path):
+        import pandas as _pd
+        df_min = _pd.read_csv(minim_path, sep=';')
+        for _, r in df_min.iterrows():
+            sol = r['solver']
+            bug = str(r['mapped_num'])
+            small = int(r['repeat_fault_count']) > 0
+            big = int(r['repeat_with_big_count']) > 0
+            flag = ''
+            if small:
+                flag += 'm'
+            if big and not small:
+                flag += 'M'
+            minim_map[(sol, bug)] = flag
+    
+
+
+    # === NEW: Load bigger/smaller overview if present ===
+    bigger_suffix = f'bigger_smaller{suffix}_{TAG}.csv'
+    bigger_path = os.path.join(output_dir, bigger_suffix)
+    bigger_map = {}  # (solver,bug) -> dict of flags
+    if os.path.exists(bigger_path):
+        import pandas as _pd2
+        df_bs = _pd2.read_csv(bigger_path, sep=';')
+        for _, r in df_bs.iterrows():
+            sol = r['Solver'].lower().replace('-', '').replace('_', '')
+            bug = str(r['Bug'])
+            bigger_map[(sol, bug)] = {
+                'smaller': str(r['smaller']).lower() == 'true',
+                'bigger':  str(r['bigger']).lower()  == 'true',
+                'bigger2': str(r['bigger 2^62']).lower() == 'true'
+            }
+    #print(bigger_map)
+
+    # === Solver-Bug Matrix ===
     solver_bug_matrix_path = os.path.join(output_dir, f'solver_bug_matrix{suffix}_{TAG}.csv')
     overall_bugs = bug_details.get('Overall', [])
-    delta_debugger_bugs = bug_details.get('DeltaDebugger', [])
-    solvers = sorted(set(bug['Solver'] for bug in overall_bugs))
-    bugs = sorted(set(bug['Bug'] for bug in overall_bugs))
+    delta_unique = {
+        (b['Solver'], b['Bug'])
+        for b in bug_details.get('DeltaDebugger', [])
+        if b.get('Unique','').lower()=='yes'
+    }
+    solvers = sorted({b['Solver'] for b in overall_bugs})
+    bugs    = sorted({b['Bug']    for b in overall_bugs})
 
-    # Create a set of unique solver-bug combinations in DeltaDebugger
-    delta_debugger_unique = set(
-        (bug['Solver'], bug['Bug']) for bug in delta_debugger_bugs if bug.get('Unique', '').lower() == 'yes'
-    )
-
-    with open(solver_bug_matrix_path, 'w', newline='') as matrix_file:
-        writer = csv.writer(matrix_file, delimiter=';')
-        # Write header row
+    with open(solver_bug_matrix_path, 'w', newline='') as mf:
+        writer = csv.writer(mf, delimiter=';')
         writer.writerow(['Solver \\ Bug'] + bugs)
-        # Write rows for each solver
-        for solver in solvers:
-            row = [solver]
+        for sol in solvers:
+            row = [sol]
             for bug in bugs:
-                if any(b['Solver'] == solver and b['Bug'] == bug for b in overall_bugs):
-                    # Check if the combination is unique in DeltaDebugger
-                    if (solver, bug) in delta_debugger_unique:
-                        row.append('SD')  # Both S and D
+                cell = ''
+                if any(b['Solver'] == sol and b['Bug'] == bug for b in overall_bugs):
+                    # pick letter by bigger/smaller/h flags
+                    bs = bigger_map.get(((sol.replace('-', '').replace('_', '')).lower(), bug), {})
+                    #bs = bigger_map.get((sol, bug), {})
+                    if bs.get('bigger2', False):
+                        #assert bs.get('bigger', False) and not bs.get('smaller', False)
+                        letter = 'H'
+                    elif bs.get('smaller', False):
+                        #assert not bs.get('bigger', False) and not bs.get('bigger2', False)
+                        letter = 'S'
+                    elif bs.get('bigger', False):
+                        #assert not bs.get('bigger2', False) and not bs.get('smaller', False)
+                        letter = 'B'
                     else:
-                        row.append('S')  # Only S
-                else:
-                    row.append('')  # No occurrence
+                        #assert not bs.get('bigger', False) and not bs.get('bigger2', False) and bs.get('smaller', True)
+                        letter = 'Q'
+                    print(f"Letter: {letter} for {sol} {bug}, bigger: {bs.get('bigger', False)}, smaller: {bs.get('smaller', False)}, bigger2: {bs.get('bigger2', False)}")
+                    # delta‐unique marker
+                    if (sol, bug) in delta_unique:
+                        letter += 'D'
+                    letter += minim_map.get((sol, bug), '')
+                    # minimization marker
+                    if 'm' in letter or 'M' in letter:
+                        letter = letter.replace('m', '')
+                        letter = letter.replace('M', '')
+                    else:
+                        letter += 'x'
+                    
+                    cell = letter
+                row.append(cell)
             writer.writerow(row)
 
     print("CSV file generated:", solver_bug_matrix_path)
@@ -487,15 +568,17 @@ def generate_fuzzer_comparison(bug_details, output_dir):
 
 def generate_cdf_plot(output_dir, apply_map=False):
     """Create both linear and logarithmic CDF plots from the bugs_stats.csv file.
-    Always ignore overall statistics and save the plots as fuzzer_cdf_plot_linear.png and fuzzer_cdf_plot_log.png in output_dir."""
+    Always ignore overall statistics and save the plots as fuzzer_cdf_plot_linear and fuzzer_cdf_plot_log in multiple formats (e.g., PNG, PDF)."""
     
     if apply_map:
         mapping_suffix = '_mapped'
     else:
         mapping_suffix = ''
     in_path = os.path.join(output_dir, f'bugs_stats{mapping_suffix}_{TAG}.csv')
-    out_png_linear = os.path.join(output_dir, f'fuzzer_cdf_plot_linear{mapping_suffix}_{TAG}.png')
-    out_png_log = os.path.join(output_dir, f'fuzzer_cdf_plot_log{mapping_suffix}_{TAG}.png')
+    # out_png_linear = os.path.join(output_dir, f'fuzzer_cdf_plot_linear{mapping_suffix}_{TAG}.png')
+    out_pdf_linear = os.path.join(output_dir, f'fuzzer_cdf_plot_linear{mapping_suffix}_{TAG}.pdf')
+    # out_png_log = os.path.join(output_dir, f'fuzzer_cdf_plot_log{mapping_suffix}_{TAG}.png')
+    out_pdf_log = os.path.join(output_dir, f'fuzzer_cdf_plot_log{mapping_suffix}_{TAG}.pdf')
 
     # Predefined color mapping for fuzzers
     FUZZER_COLORS = {
@@ -532,51 +615,111 @@ def generate_cdf_plot(output_dir, apply_map=False):
         label = col.replace('_First Occurence', '')
         fuzzer_data.append((label, times, cdf))
 
+    # Optional: assign priority to specific fuzzers
+    fuzzer_priority = {
+        'VirtualBest': 1,
+        'DeltaDebugger': 2,
+        # others get default priority = 999
+    }
+
+    # Assign default priority if not listed
+    def get_priority(label):
+        return fuzzer_priority.get(label, 999)
+
     # Sort by number of bugs (descending)
-    fuzzer_data.sort(key=lambda x: len(x[1]), reverse=True)
+#    fuzzer_data.sort(key=lambda x: (len(x[1]), get_priority(x[0])), reverse=True)
+    fuzzer_data.sort(key=lambda x: (-len(x[1]), get_priority(x[0])))
+
 
     # Adjust TAG for plot titles if it contains underscores
     plot_tag = TAG.replace('_', ' ') if '_' in TAG else TAG
 
     # Generate Linear Plot
+    # plt.rcParams.update({'text.usetex': True, 'font.family': 'cmr10'})  # Enable LaTeX font rendering with Computer Modern
+    # plt.rcParams.update({'text.usetex': True, 'font.family': 'serif'})
+    # plt.rcParams.update({'text.usetex': True, 'font.family': 'Lucida'})  # Enable LaTeX font rendering with Lucida
+    plt.rcParams.update({
+        'text.usetex': True,
+        'font.family': 'serif',
+        'text.latex.preamble': r'\usepackage{times}'
+    })
     plt.figure(figsize=(10, 6))
     for label, times, cdf in fuzzer_data:
         color = FUZZER_COLORS.get(label, None)  # Use predefined color or default
         bug_count = len(times)  # Count the number of bugs found by the fuzzer
-        plt.step(times, cdf, label=f"({bug_count} bugs) {label}", color=color)
+        plt.step(times, cdf, label=f"({bug_count} faults) {label}", color=color)
     plt.xscale('linear')
     plt.xlabel('Time (seconds)')
-    plt.ylabel('Bugs Detected')
-    plt.title(f'{plot_tag} CDF of First Bug Occurrences Over Time per Fuzzer (Linear Scale)')
+    plt.ylabel('Faults Detected')
+    plt.title(f'{TAG} CDF of First Fault Occurrences Over Time per Fuzzer (Linear Scale)')
     plt.legend()
     plt.grid(True, which="both", ls="--")
     plt.tight_layout()
-    plt.savefig(out_png_linear)
+    # plt.savefig(out_png_linear)
+    plt.savefig(out_pdf_linear)
     plt.close()
-    print("Linear CDF plot generated:", out_png_linear)
+    print("Linear CDF plot generated:", out_pdf_linear)
+
+
+     # Custom ticks in seconds
+    custom_ticks = [
+        1e-1,           # 100 ms
+        1,              # 1 second
+        60,             # 1 minute
+        3600,           # 1 hour
+        86400,          # 1 day
+        360000          # 100 hours
+    ]
+#    custom_labels = [
+#        "1 ms",
+#        "1 s",
+#        "1 min",
+#        "1 h",
+#        "1 day",
+#        "100 h"
+#    ]
+    custom_labels = [
+        r"$100\,\mathrm{ms}$",
+        r"$1\,\mathrm{s}$",
+        r"$1\,\mathrm{min}$",
+        r"$1\,\mathrm{h}$",
+        r"$1\,\mathrm{day}$",
+        r"$100\,\mathrm{h}$"
+    ]
+
 
     # Generate Logarithmic Plot
+    # plt.rcParams.update({'text.usetex': True, 'font.family': 'cmr10'})  # Enable LaTeX font rendering with Computer Modern
+    # plt.rcParams.update({'text.usetex': True, 'font.family': 'cmr10'})  # Enable LaTeX font rendering with Computer Modern
+    # plt.rcParams.update({'text.usetex': True, 'font.family': 'Lucida'})  # Enable LaTeX font rendering with Lucida
+    plt.rcParams.update({
+        'text.usetex': True,
+        'font.family': 'serif',
+        'text.latex.preamble': r'\usepackage{times}',
+        'font.size': 14
+    })
     plt.figure(figsize=(10, 6))
     for label, times, cdf in fuzzer_data:
         color = FUZZER_COLORS.get(label, None)  # Use predefined color or default
         bug_count = len(times)  # Count the number of bugs found by the fuzzer
-        plt.step(times, cdf, label=f"({bug_count} bugs) {label}", color=color)
-        plt.xscale('log', base=2)
-    plt.xlim(2**-3, 2**19)  # Set x-axis range from 2^-1 to 2^19
+        plt.step(times, cdf, label=f"({bug_count} faults) {label}", color=color)
+    plt.xscale('log', base=2)
+    plt.xticks(custom_ticks, custom_labels)
+    plt.xlim(2**-4, 2**19)  # Set x-axis range from 2^-3 to 2^19
     if apply_map:
         plt.ylim(0, 75)  # Set y-axis range from 0 to 75 for mapped data
     else:
-        plt.ylim(0, 95)   
-    plt.xlabel('Time (seconds, log scale base 2)')
-    plt.ylabel('Bugs Detected')
-    plt.title(f'{plot_tag} CDF of First Bug Occurrences Over Time per Fuzzer (Logarithmic Scale)')
-    plt.legend()
+        plt.ylim(0, 95)
+    plt.xlabel('Time (log scale)')
+    plt.ylabel('Faults Detected')
+    plt.title(f'{plot_tag} CDF of First Fault Occurrences Over Time per Fuzzer (Logarithmic)')
+    plt.legend(loc='upper left')  # Move legend to the top left corner
     plt.grid(True, which="both", ls="--")
     plt.tight_layout()
-    plt.savefig(out_png_log)
-    # plt.show()
+    # plt.savefig(out_png_log)
+    plt.savefig(out_pdf_log)
     plt.close()
-    print("Logarithmic CDF plot generated:", out_png_log)
+    print("Logarithmic CDF plot generated:", out_pdf_log)
 
 def generate_solver_timings(log_text, output_dir):
     """Extract solver timing/memory info *per fuzzer* and save to solver_timings_{TAG}.csv."""
@@ -814,6 +957,169 @@ def generate_fuzzer_overview_table(output_dir, apply_map=False):
     print("CSV file generated:", out_path)
     print(f"\tComprehensive fuzzer overview table combining general, summary, timing and comparison stats saved in {overview_fname}.")
 
+def generate_fault_tests(input_dir, output_dir, apply_map=False):
+    """Run compare.py on all .wcnf in input_dir, write detailed + summary CSVs."""
+    pattern = os.path.join(input_dir, "*_*_*.wcnf")
+    files = sorted(glob.glob(pattern))
+    if not files:
+        print(f"No minimized faults in {input_dir}")
+        return
+    print(f"Found {len(files)} minimized faults in {input_dir}. Running compare.py for every file with timeout of 10 seconds for each solver, this may take a while...")
+
+    suffix = '_mapped' if apply_map else ''
+    detailed_csv = os.path.join(output_dir, f'minimized_tested_again_detailed{suffix}_{TAG}.csv')
+    summary_csv = os.path.join(output_dir, f'minimized_tested_again_summary{suffix}_{TAG}.csv')
+
+    records = []
+    # --- detailed ---
+    with open(detailed_csv, 'w', newline='') as detf:
+        cols = ["solver", "num", "error_code", "message"]
+        writer = csv.DictWriter(detf, fieldnames=cols)
+        writer.writeheader()
+        for path in files:
+            fn = os.path.basename(path)
+            solver_short, num, _ = fn.split("_", 2)
+            solver = SOLVER_NAME_MAP.get(solver_short, solver_short)
+            print(f"Testing {fn} ...")
+            try:
+                proc = subprocess.run(
+                    ["../compare.py", "--timeout", "10", path],
+                    cwd=os.path.dirname(__file__),
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+                )
+                out = proc.stdout
+            except Exception as e:
+                print(f"Error running compare.py on {fn}: {e}")
+                out = str(e)
+
+            m = re.search(rf"c {re.escape(solver_short)} with ERROR CODE\s+(\d+)", out)
+            raw_code = m.group(1) if m else "XXX"
+            # capture full line if present
+            line = next((L for L in out.splitlines() if f"c {solver} with ERROR CODE" in L), "")
+            # write raw_code here; mapping deferred to summary
+            rec = {"solver": solver, "num": num, "error_code": raw_code, "message": line}
+            records.append(rec)
+            writer.writerow(rec)
+
+    print("CSV file generated:", detailed_csv)
+    print(f"\tDetailed fault-test results saved in {os.path.basename(detailed_csv)}")
+
+    # --- summary ---
+    summary = {}
+    for r in records:
+        key = (r["solver"], r["num"])
+        if key not in summary:
+            summary[key] = {"total": 0, "repeat_fault": 0, "repeat_with_big": 0}
+        summary[key]["total"] += 1
+        if r["error_code"] == r["num"]:
+            summary[key]["repeat_fault"] += 1
+        try:
+            if int(r["error_code"]) == int(r["num"]) + 1000:
+                summary[key]["repeat_with_big"] += 1
+        except:
+            pass
+
+    # Build grouped summary rows, merging duplicate mapped_num if mapping is active
+    summary_rows = []
+    if apply_map:
+        grouped = {}
+        for (solver, num), cnt in summary.items():
+            if num.isdigit():
+                mapped = ERROR_MAP.get(int(num), num)
+            else:
+                mapped = num
+            key = (solver, mapped)
+            grp = grouped.setdefault(key, {"total": 0, "repeat_fault": 0, "repeat_with_big": 0})
+            grp["total"] += cnt["total"]
+            grp["repeat_fault"] += cnt["repeat_fault"]
+            grp["repeat_with_big"] += cnt["repeat_with_big"]
+        for (solver, mapped), cnt in sorted(grouped.items()):
+            summary_rows.append((solver, mapped, cnt["total"], cnt["repeat_fault"], cnt["repeat_with_big"]))
+    else:
+        for (solver, num), cnt in sorted(summary.items()):
+            summary_rows.append((solver, num, cnt["total"], cnt["repeat_fault"], cnt["repeat_with_big"]))
+
+    # Write summary CSV
+    with open(summary_csv, 'w', newline='') as sf:
+        cols = ["solver", "mapped_num", "total_instances", "repeat_fault_count", "repeat_with_big_count"]
+        w = csv.DictWriter(sf, fieldnames=cols, delimiter=';')
+        w.writeheader()
+        for solver, mapped_num, total, rf, rb in summary_rows:
+            w.writerow({
+                "solver": solver,
+                "mapped_num": mapped_num,
+                "total_instances": total,
+                "repeat_fault_count": rf,
+                "repeat_with_big_count": rb
+            })
+    print("CSV file generated:", summary_csv)
+    print(f"\tSummary of fault-tests saved in {os.path.basename(summary_csv)}")
+
+def generate_fault_overview_table(output_dir, apply_map=False):
+    """Scan FaultOverview/*.log.xz for bigger/smaller/bigger2^62, 
+    aggregate by (solver, mapped‐bug), and write bigger_smaller{suffix}_{TAG}.csv."""
+    import glob, lzma, re, csv, os
+
+    print("Generating fault overview table (bigger_smaller*)... This may take a while, as all *.xz files are checked for occurences of small big huge errors!")
+
+    folder = os.path.join(output_dir, 'FaultOverview')
+    pattern = os.path.join(folder, '**', '*.log.xz')
+    files = glob.glob(pattern, recursive=True)
+    if not files:
+        print(f"No .log.xz files in {folder}")
+        return
+
+    bigger_txt = "c SumOfWeightsi: > UINT32"
+    smaller_txt = "c SumOfWeightsi: < UINT32"
+    sum_pat = re.compile(r"c SumOfWeights\.: (\d+)")
+    suffix = '_mapped' if apply_map else ''
+    agg = {}  # (solver,bug) -> {'bigger':bool,'smaller':bool,'bigger2':bool}
+
+    for path in files:
+        solver, bug = None, None
+        m = re.search(r'/([^/_]+(?:-[^/_]+)?)_(\d+)\.log\.xz$', path)
+        if not m:
+            continue
+        solver, bug_orig = m.group(1), m.group(2)
+        # apply mapping if requested
+        bug = ERROR_MAP.get(int(bug_orig), bug_orig) if apply_map and bug_orig.isdigit() else bug_orig
+
+        found_bigger = False
+        found_smaller = False
+        always_big2 = True
+        try:
+            with lzma.open(path, 'rt', errors='ignore') as f:
+                for line in f:
+                    if not found_bigger and bigger_txt in line:
+                        found_bigger = True
+                    if not found_smaller and smaller_txt in line:
+                        found_smaller = True
+                    if sum_m := sum_pat.search(line):
+                        if int(sum_m.group(1)) <= 2**62:
+                            always_big2 = False
+                    if found_bigger and found_smaller and not always_big2:
+                        break
+        except Exception as e:
+            print(f"Error reading {path}: {e}")
+            continue
+
+        key = (solver, bug)
+        if key not in agg:
+            agg[key] = {'bigger': False, 'smaller': False, 'bigger2': True}
+        agg[key]['bigger']   = agg[key]['bigger']   or found_bigger
+        agg[key]['smaller']  = agg[key]['smaller']  or found_smaller
+        agg[key]['bigger2']  = agg[key]['bigger2'] and always_big2
+
+    out_csv = os.path.join(output_dir, f'bigger_smaller{suffix}_{TAG}.csv')
+    with open(out_csv, 'w', newline='') as csvf:
+        writer = csv.writer(csvf, delimiter=';')
+        writer.writerow(['Solver', 'Bug', 'bigger', 'smaller', 'bigger 2^62'])
+        for (solver, bug), v in sorted(agg.items()):
+            writer.writerow([solver, bug, str(v['bigger']), str(v['smaller']), str(v['bigger2'])])
+
+    print("CSV file generated:", out_csv)
+    print(f"\tFault‐overview (bigger/smaller/bigger 2^62) saved in bigger_smaller{suffix}_{TAG}.csv")
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Extract data from a log file and optionally map error codes to fault numbers.'
@@ -833,16 +1139,36 @@ if __name__ == '__main__':
         dest='tag', 
         default='', 
         help='If set, insert this tag into all filenames and plot titles')
+    parser.add_argument(
+        '--test-minimized',
+        dest='test_minimized',
+        action='store_true',
+        help='Run compare.py on output_dir/FaultsMinimized and produce fault CSVs'
+    )
     args = parser.parse_args()
 
     # build TAG once
-    TAG = f"{args.tag}" if args.tag else ""
+    TAG = args.tag or ""
 
     log_file_path = args.input_log_file
     output_dir = os.path.dirname(os.path.abspath(log_file_path))
+    fault_dir = os.path.join(output_dir, "FaultsMinimized")
     with open(log_file_path, 'r') as f:
         log_text = f.read()
-
+    
+    if not os.path.exists(fault_dir):
+        os.makedirs(fault_dir)
+    if args.test_minimized and os.path.exists(fault_dir):
+        while True:
+            resp = input("Have you checked that the right solvers are imported into compare.py? (y/n): ").strip().lower()
+            if resp in ('y', 'yes'):
+                break
+            if resp in ('n', 'no'):
+                print("Please update compare.py with the correct solvers before running. Exiting.")
+                exit(1)
+            print("Please answer 'y' or 'n'.")
+        generate_fault_tests(fault_dir, output_dir, apply_map=args.apply_map)
+    generate_fault_overview_table(output_dir, apply_map=args.apply_map)
     all_data, stats_matches = generate_general_stats(log_text, output_dir)
     bug_details, virtual_best = generate_bug_stats(
         log_text, stats_matches, output_dir, apply_map=args.apply_map
@@ -854,4 +1180,5 @@ if __name__ == '__main__':
     generate_solver_timings(log_text, output_dir)
     generate_fuzzer_overview_table(output_dir, apply_map=args.apply_map)
     generate_cdf_plot(output_dir, apply_map=args.apply_map)
+    
     print(f"CSV files and plots generated in: {output_dir}")
