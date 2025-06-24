@@ -1321,11 +1321,11 @@ double ddmin() {
       if (!active)
         continue;
 
-      std::cout << "activated: ";
-      for (auto act : activated) {
-        std::cout << act << " ";
-      }
-      std::cout << std::endl;
+      // std::cout << "activated: ";
+      // for (auto act : activated) {
+      //   std::cout << act << " ";
+      // }
+      // std::cout << std::endl;
       if (termination_flag) {
         dout0 << "Terminate minimization loop of current mode." << std::endl;
         break;
@@ -1355,11 +1355,11 @@ double ddmin() {
       for (unsigned it = pair.first; it <= pair.second; it++)
         activated[it] = false;
 
-      std::cout << "activatedAfter: ";
-      for (auto act : activated) {
-        std::cout << act << " ";
-      }
-      std::cout << std::endl;
+      // std::cout << "activatedAfter: ";
+      // for (auto act : activated) {
+      //   std::cout << act << " ";
+      // }
+      // std::cout << std::endl;
 
       tmpRemoved += pair.second - pair.first + 1;
       dout3 << "tmpRemoved: " << tmpRemoved << std::endl;
