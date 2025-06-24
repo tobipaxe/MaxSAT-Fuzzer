@@ -12,7 +12,7 @@ import statistics
 import resource
 import psutil
 import wcnfTool
-from configPrivateCertified import new_rules, solvers, timeoutFactor, mempeakFactor, mem_limit_for_one_solver_call
+from config import new_rules, solvers, timeoutFactor, mempeakFactor, mem_limit_for_one_solver_call
 
 
 def is_valid_file(arg):
