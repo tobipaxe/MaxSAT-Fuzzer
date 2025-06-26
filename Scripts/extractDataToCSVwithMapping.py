@@ -650,7 +650,7 @@ def generate_cdf_plot(output_dir, apply_map=False):
         plt.step(times, cdf, label=f"({bug_count} faults) {label}", color=color)
     plt.xscale('linear')
     plt.xlabel('Time (seconds)')
-    plt.ylabel('Faults Detected')
+    plt.ylabel('Failures Detected')
     plt.title(f'{TAG} CDF of First Fault Occurrences Over Time per Fuzzer (Linear Scale)')
     plt.legend()
     plt.grid(True, which="both", ls="--")
@@ -702,7 +702,7 @@ def generate_cdf_plot(output_dir, apply_map=False):
     for label, times, cdf in fuzzer_data:
         color = FUZZER_COLORS.get(label, None)  # Use predefined color or default
         bug_count = len(times)  # Count the number of bugs found by the fuzzer
-        plt.step(times, cdf, label=f"({bug_count} faults) {label}", color=color)
+        plt.step(times, cdf, label=f"({bug_count} failures) {label}", color=color)
     plt.xscale('log', base=2)
     plt.xticks(custom_ticks, custom_labels)
     plt.xlim(2**-4, 2**19)  # Set x-axis range from 2^-3 to 2^19
@@ -711,8 +711,8 @@ def generate_cdf_plot(output_dir, apply_map=False):
     else:
         plt.ylim(0, 95)
     plt.xlabel('Time (log scale)')
-    plt.ylabel('Faults Detected')
-    plt.title(f'{plot_tag} CDF of First Fault Occurrences Over Time per Fuzzer (Logarithmic)')
+    plt.ylabel('Failures Detected')
+    plt.title(f'{plot_tag} CDF of First Failure Occurrences Over Time per Fuzzer (Logarithmic)')
     plt.legend(loc='upper left')  # Move legend to the top left corner
     plt.grid(True, which="both", ls="--")
     plt.tight_layout()
