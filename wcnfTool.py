@@ -11,6 +11,7 @@ import random
 vars = 0
 nbHard = 0
 nbSoft = 0
+nbLiterals = 0
 maxWeight = 0
 sumOfWeights = 0
 wcnfInputFormat = ""
@@ -29,6 +30,7 @@ def reset_values():
     vars = 0
     nbHard = 0
     nbSoft = 0
+    nbLiterals = 0
     maxWeight = 0
     sumOfWeights = 0
     wcnfInputFormat = ""
@@ -81,10 +83,12 @@ def parse_wcnf(filename):
                 continue
 
             if line.startswith(hardClauseIndicator):
+                global nbLiterals
                 # Parse hard clause
                 clause = list(map(int, line[len(hardClauseIndicator) + 1: -2].split()))
                 nbHard += 1
                 weight = -1
+                nbLiterals += len(clause)
             elif line[0].isdigit():
                 # Parse soft clause (weighted)
                 weight, *clause = map(int, line[:-2].split())
@@ -92,6 +96,7 @@ def parse_wcnf(filename):
                 if weight > maxWeight:
                     maxWeight = weight
                 nbSoft += 1
+                nbLiterals += len(clause)
             else:
                 print("c WARNING: read in line (ignored): " + line)
                 continue
